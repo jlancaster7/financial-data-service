@@ -4,6 +4,15 @@ Data models for FMP API responses and transformations
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List
 from datetime import date, datetime, timezone
+import json
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder for datetime objects"""
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        return super().default(obj)
 
 
 @dataclass
@@ -46,7 +55,7 @@ class CompanyProfile:
         """Convert to raw table record format"""
         return {
             'symbol': self.symbol,
-            'raw_data': self.__dict__,  # Store full data as JSON
+            'raw_data': json.dumps(self.__dict__, cls=DateTimeEncoder),  # Convert to JSON string for VARIANT
             'api_source': 'FMP',
             'loaded_timestamp': datetime.now(timezone.utc)
         }
@@ -104,7 +113,7 @@ class HistoricalPrice:
         return {
             'symbol': self.symbol,
             'price_date': self.price_date,
-            'raw_data': {
+            'raw_data': json.dumps({
                 'open': self.open_price,
                 'high': self.high_price,
                 'low': self.low_price,
@@ -112,7 +121,7 @@ class HistoricalPrice:
                 'adjClose': self.adj_close,
                 'volume': self.volume,
                 'changePercent': self.change_percent
-            },
+            }, cls=DateTimeEncoder),
             'api_source': 'FMP',
             'loaded_timestamp': datetime.now(timezone.utc)
         }
@@ -183,7 +192,7 @@ class IncomeStatement(FinancialStatement):
     def to_raw_record(self) -> Dict[str, Any]:
         """Convert to raw table record format"""
         record = self.to_raw_base()
-        record['raw_data'] = self.__dict__
+        record['raw_data'] = json.dumps(self.__dict__, cls=DateTimeEncoder)
         return record
     
     def to_staging_record(self) -> Dict[str, Any]:
@@ -232,7 +241,7 @@ class BalanceSheet(FinancialStatement):
     def to_raw_record(self) -> Dict[str, Any]:
         """Convert to raw table record format"""
         record = self.to_raw_base()
-        record['raw_data'] = self.__dict__
+        record['raw_data'] = json.dumps(self.__dict__, cls=DateTimeEncoder)
         return record
     
     def to_staging_record(self) -> Dict[str, Any]:
@@ -280,7 +289,7 @@ class CashFlow(FinancialStatement):
     def to_raw_record(self) -> Dict[str, Any]:
         """Convert to raw table record format"""
         record = self.to_raw_base()
-        record['raw_data'] = self.__dict__
+        record['raw_data'] = json.dumps(self.__dict__, cls=DateTimeEncoder)
         return record
     
     def to_staging_record(self) -> Dict[str, Any]:

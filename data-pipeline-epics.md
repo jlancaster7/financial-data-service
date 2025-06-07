@@ -118,11 +118,11 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** I can analyze company characteristics
 
 **Acceptance Criteria:**
-- [ ] Extract company profiles from FMP API
-- [ ] Load data into RAW_COMPANY_PROFILE table
-- [ ] Transform and load into STG_COMPANY_PROFILE
-- [ ] Update DIM_COMPANY in analytics layer
-- [ ] Handle new companies and updates
+- [x] Extract company profiles from FMP API
+- [x] Load data into RAW_COMPANY_PROFILE table
+- [x] Transform and load into STG_COMPANY_PROFILE
+- [x] Update DIM_COMPANY in analytics layer
+- [x] Handle new companies and updates
 
 **Story Points:** 3  
 **Dependencies:** Story 3.1
@@ -321,17 +321,19 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - Story 2.1: FMP API Client (5 points) ✅
 - **Total: 13 points**
 
-### Sprint 2 (Weeks 3-4): Core ETL Pipeline 🚧 IN PROGRESS
+### Sprint 2 (Weeks 3-4): Core ETL Pipeline ✅ COMPLETED
 - Story 2.2: Data Transformation (3 points) ✅
 - Story 3.1: ETL Pipeline Framework (3 points) ✅
 - ETL Monitoring Infrastructure ✅
-- Stories 3.2-3.3: Company and Price Data (8 points)
-- **Total: 14 points** (6 completed, 8 remaining)
+- Story 3.2: Extract Company Data (3 points) ✅
+- VARIANT Column Handling Implementation ✅
+- **Total: 14 points** (All completed except Story 3.3 moved to Sprint 3)
 
-### Sprint 3 (Weeks 5-6): Financial Data & Analytics
+### Sprint 3 (Weeks 5-6): Financial Data & Analytics 🚧 NEXT
+- Story 3.3: Extract Historical Price Data (5 points)
 - Epic 4: Stories 4.1-4.2 (8 points)
 - Epic 5: Stories 5.1-5.2 (8 points)
-- **Total: 16 points**
+- **Total: 21 points**
 
 ### Sprint 4 (Weeks 7-8): Operations & Deployment
 - Epic 6: All stories (7 points)

@@ -98,6 +98,7 @@ financial-data-service/
 │   │   ├── __init__.py
 │   │   ├── base_etl.py    # Abstract base ETL framework
 │   │   ├── sample_etl.py  # Sample implementation
+│   │   ├── company_etl.py  # Company profile ETL
 │   │   └── etl_monitor.py # Monitoring persistence
 │   ├── models/            # Data models (Sprint 2)
 │   ├── utils/             # Utility modules
@@ -108,11 +109,14 @@ financial-data-service/
 │   ├── test_snowflake_connector.py
 │   ├── test_fmp_client.py
 │   ├── test_transformations.py
-│   └── test_etl_framework.py
+│   ├── test_etl_framework.py
+│   └── test_company_etl.py
 ├── docs/                  # Documentation
 │   └── IMPLEMENTATION_STATUS.md
 ├── config/                # Configuration files
 ├── scripts/               # Utility scripts
+│   ├── run_company_etl.py # Run company ETL
+│   └── setup_etl_monitoring.py # Setup monitoring tables
 ├── requirements.txt       # Python dependencies
 ├── setup.py              # Package setup
 ├── .env.example          # Environment template
@@ -184,9 +188,46 @@ financial-data-service/
 - Comprehensive error and metric tracking
 - Views for easy monitoring and reporting
 
+### Story 3.2: Extract Company Data ✅
+**Files Created:**
+- `src/etl/company_etl.py` - Company profile ETL pipeline:
+  - Extracts company profiles from FMP API (with batch support)
+  - Loads data to RAW_COMPANY_PROFILE and STG_COMPANY_PROFILE
+  - Updates DIM_COMPANY with SCD Type 2 logic
+  - Handles new companies and updates
+  - Categorizes market cap and formats headquarters location
+- `scripts/run_company_etl.py` - Script to run company ETL:
+  - Supports specific symbols or all S&P 500
+  - Dry run mode for testing
+  - Optional analytics layer updates
+- `scripts/check_snowflake_data.py` - Script to verify data in Snowflake:
+  - Shows row counts and sample data for all tables
+  - Displays table structure information
+  - Checks ETL monitoring status
+- `tests/test_company_etl.py` - Comprehensive unit tests
+
+**Key Features:**
+- Batch API support for efficient extraction
+- Change detection for existing companies
+- Market cap categorization (Micro/Small/Mid/Large/Mega)
+- SCD Type 2 implementation for dimension updates
+- Full integration with ETL framework and monitoring
+
+### VARIANT Column Handling ✅
+**Challenge:** Snowflake VARIANT columns require special handling for JSON data
+**Solution Implemented:**
+- Using single-row INSERT with PARSE_JSON for VARIANT columns
+- Custom DateTimeEncoder for proper JSON serialization of date objects
+- Bulk insert method detects VARIANT columns and applies PARSE_JSON automatically
+
+**Key Learnings:**
+- Snowflake's executemany doesn't support PARSE_JSON in VALUES clause
+- write_pandas approach failed due to S3 certificate validation issues
+- Single-row inserts work reliably but are slower for large datasets
+- Future optimization options: staging table approach or resolving certificate issues
+
 ## Next Steps (Sprint 2)
-1. Story 3.2: Extract Company Data
-2. Story 3.3: Extract Historical Price Data
+1. Story 3.3: Extract Historical Price Data
 
 ## Testing Strategy
 - Unit tests for individual components

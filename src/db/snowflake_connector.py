@@ -110,21 +110,57 @@ class SnowflakeConnector:
             logger.warning("No data to insert")
             return
         
-        columns = list(data[0].keys())
-        placeholders = ", ".join([f"%({col})s" for col in columns])
-        column_names = ", ".join(columns)
+        import json
         
-        query = f"INSERT INTO {table} ({column_names}) VALUES ({placeholders})"
+        # Common VARIANT column names in our schema
+        variant_columns = {'raw_data', 'metadata', 'error_details'}
+        
+        # Get column names from first record
+        columns = list(data[0].keys())
+        
+        # Build INSERT statement with SELECT and PARSE_JSON for VARIANT columns
+        placeholders = []
+        select_parts = []
+        for col in columns:
+            placeholders.append(f"{col}")
+            if col.lower() in variant_columns:
+                # For VARIANT columns, use PARSE_JSON
+                select_parts.append(f"PARSE_JSON(%s)")
+            else:
+                select_parts.append("%s")
+        
+        column_list = ", ".join(placeholders)
+        select_list = ", ".join(select_parts)
+        
+        query = f"INSERT INTO {table} ({column_list}) SELECT {select_list}"
         
         with self.cursor() as cursor:
             logger.info(f"Bulk inserting {len(data)} rows into {table}")
             
-            for i in range(0, len(data), chunk_size):
-                chunk = data[i:i + chunk_size]
-                cursor.executemany(query, chunk)
-                logger.debug(f"Inserted chunk {i//chunk_size + 1} ({len(chunk)} rows)")
+            # Use single-row inserts since executemany doesn't work with PARSE_JSON
+            inserted = 0
+            for record in data:
+                try:
+                    row_values = []
+                    for col in columns:
+                        value = record[col]
+                        # Ensure VARIANT columns are JSON strings
+                        if col.lower() in variant_columns and not isinstance(value, str):
+                            value = json.dumps(value)
+                        row_values.append(value)
+                    
+                    cursor.execute(query, tuple(row_values))
+                    inserted += 1
+                    
+                    if inserted % 100 == 0:
+                        logger.debug(f"Inserted {inserted} rows...")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to insert row: {e}")
+                    logger.error(f"Row data: {record}")
+                    raise
             
-            logger.info(f"Bulk insert completed for {table}")
+            logger.info(f"Bulk insert completed for {table} - inserted {inserted} rows")
     
     def truncate_table(self, table: str) -> None:
         """Truncate a table"""

@@ -48,7 +48,7 @@ class ETLMonitor:
                 'records_transformed': result.records_transformed,
                 'records_loaded': result.records_loaded,
                 'error_count': len(result.errors),
-                'metadata': json.dumps(result.metadata) if result.metadata else None
+                'metadata': json.dumps(result.metadata) if result.metadata else json.dumps({})
             }
             
             self.snowflake.bulk_insert('ETL_JOB_HISTORY', [job_record])
@@ -75,7 +75,7 @@ class ETLMonitor:
                 'error_timestamp': datetime.now(timezone.utc),
                 'error_type': 'ETL_ERROR',  # Could be enhanced to classify errors
                 'error_message': error[:5000],  # Truncate to fit column
-                'error_details': json.dumps({'full_error': error}) if len(error) > 5000 else None
+                'error_details': json.dumps({'full_error': error}) if len(error) > 5000 else json.dumps({})
             }
             error_records.append(error_record)
         

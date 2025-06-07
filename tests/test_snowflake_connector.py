@@ -106,8 +106,13 @@ class TestSnowflakeConnector:
         
         connector.bulk_insert("test_table", data)
         
-        expected_query = "INSERT INTO test_table (col1, col2) VALUES (%(col1)s, %(col2)s)"
-        mock_cursor.executemany.assert_called_once_with(expected_query, data)
+        # Now using single-row inserts instead of executemany
+        expected_query = "INSERT INTO test_table (col1, col2) SELECT %s, %s"
+        assert mock_cursor.execute.call_count == 2
+        # Check first call
+        mock_cursor.execute.assert_any_call(expected_query, (1, "a"))
+        # Check second call
+        mock_cursor.execute.assert_any_call(expected_query, (2, "b"))
     
     @patch("snowflake.connector.connect")
     def test_table_exists(self, mock_connect, mock_config, mock_connection):
