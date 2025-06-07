@@ -81,12 +81,13 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** data loads correctly into our tables
 
 **Acceptance Criteria:**
-- [ ] Transform FMP JSON to RAW_HISTORICAL_PRICES (VARIANT storage)
-- [ ] Transform FMP profile to RAW_COMPANY_PROFILE
-- [ ] Transform FMP statements to RAW_INCOME_STATEMENT, RAW_BALANCE_SHEET, RAW_CASH_FLOW
-- [ ] Create staging layer transformations (JSON to structured)
-- [ ] Handle null values and data type conversions
-- [ ] Create unit tests for transformations
+- [x] Transform FMP JSON to RAW_HISTORICAL_PRICES (VARIANT storage)
+- [x] Transform FMP profile to RAW_COMPANY_PROFILE
+- [x] Transform FMP statements to RAW_INCOME_STATEMENT, RAW_BALANCE_SHEET, RAW_CASH_FLOW
+- [x] Create staging layer transformations (JSON to structured)
+- [x] Handle null values and data type conversions
+- [x] Create unit tests for transformations
+- [x] Implement data quality validation
 
 **Story Points:** 3  
 **Dependencies:** Story 2.1

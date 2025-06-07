@@ -1,4 +1,5 @@
 import pytest
+import requests
 from unittest.mock import Mock, patch, MagicMock
 from datetime import date
 from src.api.fmp_client import FMPClient, FMPAPIError
@@ -98,13 +99,24 @@ class TestFMPClient:
             client.get_company_profile("AAPL")
     
     @patch('requests.Session.get')
-    def test_batch_get_company_profiles(self, mock_get, mock_config, mock_response):
-        mock_response.json.return_value = [
-            {"symbol": "AAPL", "companyName": "Apple Inc."},
-            {"symbol": "MSFT", "companyName": "Microsoft Corporation"},
-            {"symbol": "GOOGL", "companyName": "Alphabet Inc."}
-        ]
-        mock_get.return_value = mock_response
+    def test_batch_get_company_profiles(self, mock_get, mock_config):
+        # Create different mock responses for each symbol
+        mock_responses = {
+            "AAPL": [{"symbol": "AAPL", "companyName": "Apple Inc."}],
+            "MSFT": [{"symbol": "MSFT", "companyName": "Microsoft Corporation"}],
+            "GOOGL": [{"symbol": "GOOGL", "companyName": "Alphabet Inc."}]
+        }
+        
+        def side_effect(url, **kwargs):
+            # Extract symbol from params
+            symbol = kwargs.get('params', {}).get('symbol', '')
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.raise_for_status = MagicMock()
+            mock_response.json.return_value = mock_responses.get(symbol, [])
+            return mock_response
+        
+        mock_get.side_effect = side_effect
         
         client = FMPClient(mock_config)
         symbols = ["AAPL", "MSFT", "GOOGL"]
@@ -113,6 +125,7 @@ class TestFMPClient:
         assert len(result) == 3
         assert result["AAPL"]["companyName"] == "Apple Inc."
         assert result["MSFT"]["companyName"] == "Microsoft Corporation"
+        assert result["GOOGL"]["companyName"] == "Alphabet Inc."
     
     @patch('requests.Session.get')
     def test_get_income_statement(self, mock_get, mock_config, mock_response):

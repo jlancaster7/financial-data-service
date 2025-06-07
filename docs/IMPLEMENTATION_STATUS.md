@@ -114,12 +114,31 @@ financial-data-service/
 └── README.md            # Project documentation
 ```
 
+### Story 2.2: Create Data Transformation Logic ✅
+**Files Created:**
+- `src/models/fmp_models.py` - Data models for FMP API responses:
+  - CompanyProfile, HistoricalPrice, IncomeStatement, BalanceSheet, CashFlow
+  - Methods to convert to raw (VARIANT) and staging (structured) formats
+- `src/transformations/fmp_transformer.py` - Transformation utilities:
+  - Handles batch transformations for all data types
+  - Tracks transformation statistics
+  - Error handling for invalid records
+- `src/transformations/data_quality.py` - Data quality validation:
+  - Validates required fields and data types
+  - Checks logical constraints (e.g., high/low prices)
+  - Validates financial statement equations
+- `tests/test_transformations.py` - Comprehensive unit tests
+
+**Key Features:**
+- Type-safe data models using dataclasses
+- Separation of raw and staging transformations
+- Comprehensive data quality checks
+- Full test coverage for all transformation logic
+
 ## Next Steps (Sprint 2)
 1. Story 3.1: Create ETL Pipeline Framework
 2. Story 3.2: Extract Company Data
 3. Story 3.3: Extract Historical Price Data
-4. Story 4.1: Extract Financial Statement Data
-5. Story 4.2: Create Staging Layer Transformations
 
 ## Testing Strategy
 - Unit tests for individual components

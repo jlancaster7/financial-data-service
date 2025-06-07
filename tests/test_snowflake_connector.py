@@ -59,19 +59,25 @@ class TestSnowflakeConnector:
     @patch("snowflake.connector.connect")
     def test_execute(self, mock_connect, mock_config, mock_connection):
         mock_cursor = MagicMock()
+        # Set up cursor as a context manager
+        mock_cursor.__enter__.return_value = mock_cursor
+        mock_cursor.__exit__.return_value = None
         mock_connection.cursor.return_value = mock_cursor
         mock_connect.return_value = mock_connection
         
         connector = SnowflakeConnector(mock_config)
         connector.execute("SELECT 1")
         
-        mock_cursor.__enter__.return_value.execute.assert_called_once_with("SELECT 1")
+        mock_cursor.execute.assert_called_once_with("SELECT 1")
     
     @patch("snowflake.connector.connect")
     def test_fetch_all(self, mock_connect, mock_config, mock_connection):
         mock_cursor = MagicMock()
-        mock_cursor.__enter__.return_value.description = [("col1",), ("col2",)]
-        mock_cursor.__enter__.return_value.fetchall.return_value = [(1, "a"), (2, "b")]
+        # Set up cursor as a context manager
+        mock_cursor.__enter__.return_value = mock_cursor
+        mock_cursor.__exit__.return_value = None
+        mock_cursor.description = [("col1",), ("col2",)]
+        mock_cursor.fetchall.return_value = [(1, "a"), (2, "b")]
         mock_connection.cursor.return_value = mock_cursor
         mock_connect.return_value = mock_connection
         
@@ -86,6 +92,9 @@ class TestSnowflakeConnector:
     @patch("snowflake.connector.connect")
     def test_bulk_insert(self, mock_connect, mock_config, mock_connection):
         mock_cursor = MagicMock()
+        # Set up cursor as a context manager
+        mock_cursor.__enter__.return_value = mock_cursor
+        mock_cursor.__exit__.return_value = None
         mock_connection.cursor.return_value = mock_cursor
         mock_connect.return_value = mock_connection
         
@@ -98,13 +107,16 @@ class TestSnowflakeConnector:
         connector.bulk_insert("test_table", data)
         
         expected_query = "INSERT INTO test_table (col1, col2) VALUES (%(col1)s, %(col2)s)"
-        mock_cursor.__enter__.return_value.executemany.assert_called_once_with(expected_query, data)
+        mock_cursor.executemany.assert_called_once_with(expected_query, data)
     
     @patch("snowflake.connector.connect")
     def test_table_exists(self, mock_connect, mock_config, mock_connection):
         mock_cursor = MagicMock()
-        mock_cursor.__enter__.return_value.description = [("COUNT",)]
-        mock_cursor.__enter__.return_value.fetchall.return_value = [(1,)]
+        # Set up cursor as a context manager
+        mock_cursor.__enter__.return_value = mock_cursor
+        mock_cursor.__exit__.return_value = None
+        mock_cursor.description = [("COUNT",)]
+        mock_cursor.fetchall.return_value = [(1,)]
         mock_connection.cursor.return_value = mock_cursor
         mock_connect.return_value = mock_connection
         
