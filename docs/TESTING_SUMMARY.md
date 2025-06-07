@@ -117,7 +117,7 @@ After extensive testing, we resolved Snowflake VARIANT column challenges:
 ```bash
 # All unit tests passing
 pytest tests/
-============================== 51 passed in 0.82s ==============================
+============================== 60 passed in 0.80s ==============================
 ```
 
 ### Data Verification
@@ -128,15 +128,40 @@ Successfully loaded company data to Snowflake:
 - ANALYTICS.DIM_COMPANY: 3 rows (dimension table with SCD Type 2)
 - ETL_JOB_HISTORY: Tracking all job executions
 
-## Next Steps (Sprint 3)
+## Sprint 3 Progress Update
 
-1. **Story 3.3: Extract Historical Price Data**
-   - Implement historical price ETL pipeline
-   - Handle large volume data efficiently
+### Completed Stories
 
-2. **Story 4.1: Extract Financial Statement Data**
+1. **Story 3.3: Extract Historical Price Data** ✅
+   - Implemented historical price ETL pipeline
+   - Extracts data from FMP API with date range support
+   - Loads to RAW_HISTORICAL_PRICES and STG_HISTORICAL_PRICES
+   - Updates FACT_DAILY_PRICES with calculated metrics
+   - **Key Achievement**: Implemented MERGE for staging tables to prevent duplicates
+   - Batch processing for handling large symbol lists efficiently
+
+### Duplicate Prevention Solution ✅
+- **Problem**: Running ETL multiple times created duplicates in staging tables
+- **Solution**: Added `merge()` method to SnowflakeConnector
+  - Uses temporary tables with MERGE statement
+  - Configurable merge keys (symbol, price_date for prices)
+  - Ensures idempotent pipeline execution
+
+### Data Verification
+Successfully loaded historical price data:
+- RAW_DATA.RAW_HISTORICAL_PRICES: With VARIANT storage
+- STAGING.STG_HISTORICAL_PRICES: Structured price data (using MERGE)
+- ANALYTICS.FACT_DAILY_PRICES: With calculated change metrics
+
+## Next Steps (Sprint 3 Continued)
+
+1. **Story 4.1: Extract Financial Statement Data** 🚧 NEXT
    - Income statements, balance sheets, cash flows
    - Quarterly and annual data handling
+
+2. **Story 4.2: Create Staging Layer Transformations**
+   - SQL/Python transformations for financial data
+   - Handle complex financial metrics
 
 3. **Story 5.1: Create Main Pipeline Orchestrator**
    - Orchestrate all ETL jobs

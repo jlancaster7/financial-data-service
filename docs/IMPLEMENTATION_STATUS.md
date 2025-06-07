@@ -99,6 +99,7 @@ financial-data-service/
 │   │   ├── base_etl.py    # Abstract base ETL framework
 │   │   ├── sample_etl.py  # Sample implementation
 │   │   ├── company_etl.py  # Company profile ETL
+│   │   ├── historical_price_etl.py # Historical price ETL
 │   │   └── etl_monitor.py # Monitoring persistence
 │   ├── models/            # Data models (Sprint 2)
 │   ├── utils/             # Utility modules
@@ -110,12 +111,14 @@ financial-data-service/
 │   ├── test_fmp_client.py
 │   ├── test_transformations.py
 │   ├── test_etl_framework.py
-│   └── test_company_etl.py
+│   ├── test_company_etl.py
+│   └── test_historical_price_etl.py
 ├── docs/                  # Documentation
 │   └── IMPLEMENTATION_STATUS.md
 ├── config/                # Configuration files
 ├── scripts/               # Utility scripts
 │   ├── run_company_etl.py # Run company ETL
+│   ├── run_price_etl.py   # Run historical price ETL
 │   └── setup_etl_monitoring.py # Setup monitoring tables
 ├── requirements.txt       # Python dependencies
 ├── setup.py              # Package setup
@@ -226,8 +229,43 @@ financial-data-service/
 - Single-row inserts work reliably but are slower for large datasets
 - Future optimization options: staging table approach or resolving certificate issues
 
-## Next Steps (Sprint 2)
-1. Story 3.3: Extract Historical Price Data
+### Story 3.3: Extract Historical Price Data ✅
+**Files Created:**
+- `src/etl/historical_price_etl.py` - Historical price ETL pipeline:
+  - Extracts historical prices from FMP API
+  - Supports date range filtering (default: last 30 days)
+  - Loads data to RAW_HISTORICAL_PRICES and STG_HISTORICAL_PRICES
+  - Updates FACT_DAILY_PRICES with calculated metrics (change_amount, change_percent)
+  - Uses MERGE for staging tables to prevent duplicates
+- `scripts/run_price_etl.py` - Script to run historical price ETL:
+  - Supports specific symbols or all S&P 500
+  - Date range parameters (--from-date, --to-date, --days-back)
+  - Batch processing with configurable batch size
+  - Dry run mode for testing
+  - Optional analytics layer updates (--skip-analytics)
+- `tests/test_historical_price_etl.py` - Comprehensive unit tests
+
+**Key Features:**
+- Batch processing for handling large symbol lists
+- Incremental loading with date range support
+- Duplicate prevention using MERGE for staging tables
+- Calculated metrics using window functions (LAG) for price changes
+- Full integration with ETL framework and monitoring
+
+### Duplicate Prevention Solution ✅
+**Challenge:** Running ETL multiple times created duplicates in staging tables
+**Solution Implemented:**
+- Added `merge()` method to SnowflakeConnector:
+  - Uses temporary tables and MERGE statement
+  - Supports configurable merge keys and update columns
+  - Handles VARIANT columns properly
+- Updated HistoricalPriceETL to use MERGE for STG_HISTORICAL_PRICES
+- MERGE uses symbol and price_date as unique keys
+- Ensures idempotent ETL pipeline execution
+
+## Next Steps (Sprint 3)
+1. Story 4.1: Extract Financial Statement Data (Income, Balance Sheet, Cash Flow)
+2. Story 4.2: Create Staging Layer Transformations
 
 ## Testing Strategy
 - Unit tests for individual components

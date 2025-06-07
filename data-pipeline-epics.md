@@ -133,11 +133,12 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** I can analyze price movements
 
 **Acceptance Criteria:**
-- [ ] Extract historical prices from FMP API
-- [ ] Load data into RAW_HISTORICAL_PRICES table
-- [ ] Transform and load into STG_HISTORICAL_PRICES
-- [ ] Update FACT_DAILY_PRICES in analytics layer
-- [ ] Handle date ranges and incremental updates
+- [x] Extract historical prices from FMP API
+- [x] Load data into RAW_HISTORICAL_PRICES table
+- [x] Transform and load into STG_HISTORICAL_PRICES
+- [x] Update FACT_DAILY_PRICES in analytics layer
+- [x] Handle date ranges and incremental updates
+- [x] Implement MERGE for staging tables to prevent duplicates
 
 **Story Points:** 5  
 **Dependencies:** Story 3.1
@@ -329,9 +330,9 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - VARIANT Column Handling Implementation ✅
 - **Total: 14 points** (All completed except Story 3.3 moved to Sprint 3)
 
-### Sprint 3 (Weeks 5-6): Financial Data & Analytics 🚧 NEXT
-- Story 3.3: Extract Historical Price Data (5 points)
-- Epic 4: Stories 4.1-4.2 (8 points)
+### Sprint 3 (Weeks 5-6): Financial Data & Analytics 🚧 IN PROGRESS
+- Story 3.3: Extract Historical Price Data (5 points) ✅
+- Epic 4: Stories 4.1-4.2 (8 points) 🚧 NEXT
 - Epic 5: Stories 5.1-5.2 (8 points)
 - **Total: 21 points**
 
