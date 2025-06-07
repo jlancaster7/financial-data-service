@@ -1,0 +1,36 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Python files
+*.py text
+*.pyw text
+*.pyx text
+*.pxd text
+
+# SQL files
+*.sql text
+
+# Documentation
+*.md text
+*.txt text
+*.rst text
+
+# Configuration
+*.json text
+*.yaml text
+*.yml text
+*.toml text
+*.ini text
+*.cfg text
+
+# Shell scripts
+*.sh text
+*.bash text
+
+# Docker
+Dockerfile text
+.dockerignore text
+
+# Git
+.gitignore text
+.gitattributes text
