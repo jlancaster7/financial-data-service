@@ -100,6 +100,7 @@ financial-data-service/
 │   │   ├── sample_etl.py  # Sample implementation
 │   │   ├── company_etl.py  # Company profile ETL
 │   │   ├── historical_price_etl.py # Historical price ETL
+│   │   ├── financial_statement_etl.py # Financial statement ETL
 │   │   └── etl_monitor.py # Monitoring persistence
 │   ├── models/            # Data models (Sprint 2)
 │   ├── utils/             # Utility modules
@@ -112,13 +113,15 @@ financial-data-service/
 │   ├── test_transformations.py
 │   ├── test_etl_framework.py
 │   ├── test_company_etl.py
-│   └── test_historical_price_etl.py
+│   ├── test_historical_price_etl.py
+│   └── test_financial_statement_etl.py
 ├── docs/                  # Documentation
 │   └── IMPLEMENTATION_STATUS.md
 ├── config/                # Configuration files
 ├── scripts/               # Utility scripts
 │   ├── run_company_etl.py # Run company ETL
 │   ├── run_price_etl.py   # Run historical price ETL
+│   ├── run_financial_etl.py # Run financial statement ETL
 │   └── setup_etl_monitoring.py # Setup monitoring tables
 ├── requirements.txt       # Python dependencies
 ├── setup.py              # Package setup
@@ -263,9 +266,40 @@ financial-data-service/
 - MERGE uses symbol and price_date as unique keys
 - Ensures idempotent ETL pipeline execution
 
+### Story 4.1: Extract Financial Statement Data ✅
+**Files Created:**
+- `src/etl/financial_statement_etl.py` - Financial statement ETL pipeline:
+  - Extracts income statements, balance sheets, and cash flows from FMP API
+  - Supports both annual and quarterly periods
+  - Loads data to all three RAW tables (RAW_INCOME_STATEMENT, RAW_BALANCE_SHEET, RAW_CASH_FLOW)
+  - Uses MERGE for staging tables to prevent duplicates
+  - Updates FACT_FINANCIAL_METRICS with calculated financial ratios
+  - Handles all three statement types in a single pipeline
+- `scripts/run_financial_etl.py` - Script to run financial statement ETL:
+  - Supports specific symbols or all S&P 500
+  - Period selection (--period annual/quarterly)
+  - Configurable limit for number of periods
+  - Batch processing with configurable batch size
+  - Dry run mode for testing
+  - Optional analytics layer updates (--skip-analytics)
+- `tests/test_financial_statement_etl.py` - Comprehensive unit tests
+
+**Key Features:**
+- Unified pipeline for all three financial statement types
+- Batch processing for handling large symbol lists
+- Period handling (annual/quarterly) with FMP API compatibility
+- Duplicate prevention using MERGE for all staging tables
+- Financial ratio calculations in FACT_FINANCIAL_METRICS:
+  - Profit Margin = (Net Income / Revenue) * 100
+  - ROE (Return on Equity) = (Net Income / Total Equity) * 100
+  - ROA (Return on Assets) = (Net Income / Total Assets) * 100
+  - Debt-to-Equity = Total Debt / Total Equity
+- Full integration with ETL framework and monitoring
+
 ## Next Steps (Sprint 3)
-1. Story 4.1: Extract Financial Statement Data (Income, Balance Sheet, Cash Flow)
-2. Story 4.2: Create Staging Layer Transformations
+1. Story 4.2: Create Staging Layer Transformations
+2. Story 5.1: Create Main Pipeline Orchestrator
+3. Story 5.2: Implement Analytics Layer Updates
 
 ## Testing Strategy
 - Unit tests for individual components

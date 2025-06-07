@@ -117,7 +117,7 @@ After extensive testing, we resolved Snowflake VARIANT column challenges:
 ```bash
 # All unit tests passing
 pytest tests/
-============================== 60 passed in 0.80s ==============================
+============================== 69 passed in 0.82s ==============================
 ```
 
 ### Data Verification
@@ -153,19 +153,40 @@ Successfully loaded historical price data:
 - STAGING.STG_HISTORICAL_PRICES: Structured price data (using MERGE)
 - ANALYTICS.FACT_DAILY_PRICES: With calculated change metrics
 
+### Completed Stories (continued)
+
+2. **Story 4.1: Extract Financial Statement Data** ✅
+   - Implemented financial statement ETL pipeline
+   - Extracts all three statement types (Income, Balance Sheet, Cash Flow)
+   - Supports annual and quarterly periods
+   - Loads to all RAW and STAGING tables
+   - Updates FACT_FINANCIAL_METRICS with calculated ratios
+   - **Key Achievement**: Unified pipeline for all financial statements
+   - Uses MERGE for staging tables to prevent duplicates
+
+### Data Verification
+Successfully loaded financial statement data:
+- RAW_DATA.RAW_INCOME_STATEMENT: With VARIANT storage
+- RAW_DATA.RAW_BALANCE_SHEET: With VARIANT storage
+- RAW_DATA.RAW_CASH_FLOW: With VARIANT storage
+- STAGING.STG_INCOME_STATEMENT: Structured data (using MERGE)
+- STAGING.STG_BALANCE_SHEET: Structured data (using MERGE)
+- STAGING.STG_CASH_FLOW: Structured data (using MERGE)
+- ANALYTICS.FACT_FINANCIAL_METRICS: With calculated financial ratios
+
 ## Next Steps (Sprint 3 Continued)
 
-1. **Story 4.1: Extract Financial Statement Data** 🚧 NEXT
-   - Income statements, balance sheets, cash flows
-   - Quarterly and annual data handling
-
-2. **Story 4.2: Create Staging Layer Transformations**
+1. **Story 4.2: Create Staging Layer Transformations** 🚧 NEXT
    - SQL/Python transformations for financial data
    - Handle complex financial metrics
 
-3. **Story 5.1: Create Main Pipeline Orchestrator**
+2. **Story 5.1: Create Main Pipeline Orchestrator**
    - Orchestrate all ETL jobs
    - Add scheduling capabilities
+
+3. **Story 5.2: Implement Analytics Layer Updates**
+   - Maintain dimension and fact tables
+   - Implement incremental updates
 
 ## Running the Tests
 

@@ -154,11 +154,13 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** I can analyze company fundamentals
 
 **Acceptance Criteria:**
-- [ ] Extract financial statements from FMP API
-- [ ] Load into RAW_INCOME_STATEMENT, RAW_BALANCE_SHEET, RAW_CASH_FLOW
-- [ ] Transform and load into staging tables
-- [ ] Update FACT_FINANCIAL_METRICS in analytics layer
-- [ ] Handle quarterly and annual periods
+- [x] Extract financial statements from FMP API
+- [x] Load into RAW_INCOME_STATEMENT, RAW_BALANCE_SHEET, RAW_CASH_FLOW
+- [x] Transform and load into staging tables
+- [x] Update FACT_FINANCIAL_METRICS in analytics layer
+- [x] Handle quarterly and annual periods
+- [x] Implement MERGE for staging tables to prevent duplicates
+- [x] Calculate financial ratios (profit margin, ROE, ROA, debt-to-equity)
 
 **Story Points:** 5  
 **Dependencies:** Story 3.1
@@ -332,7 +334,8 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 
 ### Sprint 3 (Weeks 5-6): Financial Data & Analytics 🚧 IN PROGRESS
 - Story 3.3: Extract Historical Price Data (5 points) ✅
-- Epic 4: Stories 4.1-4.2 (8 points) 🚧 NEXT
+- Story 4.1: Extract Financial Statement Data (5 points) ✅
+- Story 4.2: Create Staging Layer Transformations (3 points) 🚧 NEXT
 - Epic 5: Stories 5.1-5.2 (8 points)
 - **Total: 21 points**
 
