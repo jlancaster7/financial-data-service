@@ -3,6 +3,8 @@ from snowflake.connector import SnowflakeConnection, ProgrammingError, DatabaseE
 from contextlib import contextmanager
 from typing import Dict, List, Any, Optional, Generator
 import pandas as pd
+import json
+import time
 from loguru import logger
 from src.utils.config import SnowflakeConfig
 
@@ -161,6 +163,84 @@ class SnowflakeConnector:
                     raise
             
             logger.info(f"Bulk insert completed for {table} - inserted {inserted} rows")
+            return inserted
+    
+    def merge(self, table: str, data: List[Dict[str, Any]], 
+              merge_keys: List[str], update_columns: Optional[List[str]] = None) -> int:
+        """
+        Merge data into table using MERGE statement
+        
+        Args:
+            table: Target table name
+            data: List of dictionaries containing the data
+            merge_keys: List of column names to use for matching
+            update_columns: List of columns to update (if None, updates all non-key columns)
+            
+        Returns:
+            Number of rows affected
+        """
+        if not data:
+            return 0
+        
+        # Get table metadata to identify VARIANT columns
+        variant_columns = set()
+        with self.cursor() as cursor:
+            cursor.execute(f"""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = SPLIT_PART('{table}', '.', 1)
+                AND table_name = SPLIT_PART('{table}', '.', 2)
+                AND data_type = 'VARIANT'
+            """)
+            variant_columns = {row[0].lower() for row in cursor.fetchall()}
+        
+        # Get all columns from first record
+        columns = list(data[0].keys())
+        
+        # If update_columns not specified, use all non-key columns
+        if update_columns is None:
+            update_columns = [col for col in columns if col not in merge_keys]
+        
+        # Create temporary table with same structure
+        temp_table = f"{table}_TEMP_{int(time.time() * 1000)}"
+        
+        with self.cursor() as cursor:
+            # Create temp table
+            cursor.execute(f"CREATE TEMPORARY TABLE {temp_table} LIKE {table}")
+            
+            # Insert data into temp table using existing bulk_insert logic
+            self.bulk_insert(temp_table, data)
+            
+            # Build MERGE statement
+            merge_conditions = " AND ".join([f"target.{key} = source.{key}" for key in merge_keys])
+            update_sets = ", ".join([f"{col} = source.{col}" for col in update_columns])
+            
+            # Build insert columns and values
+            insert_columns = ", ".join(columns)
+            insert_values = ", ".join([f"source.{col}" for col in columns])
+            
+            merge_query = f"""
+            MERGE INTO {table} AS target
+            USING {temp_table} AS source
+            ON {merge_conditions}
+            WHEN MATCHED THEN 
+                UPDATE SET {update_sets}
+            WHEN NOT MATCHED THEN 
+                INSERT ({insert_columns})
+                VALUES ({insert_values})
+            """
+            
+            logger.debug(f"Executing MERGE: {merge_query}")
+            result = cursor.execute(merge_query)
+            
+            # Get affected row count
+            affected = cursor.rowcount if cursor.rowcount else 0
+            
+            # Drop temp table
+            cursor.execute(f"DROP TABLE {temp_table}")
+            
+            logger.info(f"Merge completed for {table} - affected {affected} rows")
+            return affected
     
     def truncate_table(self, table: str) -> None:
         """Truncate a table"""

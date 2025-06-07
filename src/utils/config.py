@@ -69,12 +69,14 @@ class FMPConfig:
 class AppConfig:
     log_level: str
     batch_size: int
+    enable_monitoring: bool
     
     @classmethod
     def from_env(cls) -> "AppConfig":
         return cls(
             log_level=os.getenv("LOG_LEVEL", "INFO"),
-            batch_size=int(os.getenv("BATCH_SIZE", "1000"))
+            batch_size=int(os.getenv("BATCH_SIZE", "1000")),
+            enable_monitoring=os.getenv("ENABLE_MONITORING", "true").lower() == "true"
         )
 
 
