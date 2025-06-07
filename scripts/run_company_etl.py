@@ -86,13 +86,7 @@ def main():
         logger.info(f"Processing {len(symbols)} symbols")
         
         # Create and configure ETL pipeline
-        etl = CompanyETL(
-            snowflake_connector=snowflake,
-            fmp_client=fmp_client,
-            symbols=symbols,
-            load_to_analytics=not args.no_analytics,
-            batch_size=args.batch_size
-        )
+        etl = CompanyETL(config)
         
         # Add monitoring hooks for visibility
         def log_extraction_complete(etl_instance, data=None, **kwargs):
@@ -113,7 +107,7 @@ def main():
             logger.info("DRY RUN: Extracting and transforming only")
             
             # Extract
-            raw_data = etl.extract()
+            raw_data = etl.extract(symbols=symbols, load_to_analytics=not args.no_analytics)
             etl.result.records_extracted = len(raw_data)
             
             # Transform
@@ -130,7 +124,17 @@ def main():
             return True
         else:
             # Run full ETL pipeline
-            result = etl.run()
+            # Extract
+            raw_data = etl.extract(symbols=symbols, load_to_analytics=not args.no_analytics)
+            
+            # Transform
+            transformed_data = etl.transform(raw_data)
+            
+            # Load
+            etl.load(transformed_data)
+            
+            # Get result
+            result = etl.result
             
             # Log summary
             logger.info("\nETL Pipeline Summary:")

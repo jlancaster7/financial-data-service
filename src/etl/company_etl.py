@@ -8,47 +8,50 @@ from loguru import logger
 from src.etl.base_etl import BaseETL
 from src.db.snowflake_connector import SnowflakeConnector
 from src.api.fmp_client import FMPClient
+from src.utils.config import Config
 
 
 class CompanyETL(BaseETL):
     """ETL pipeline for company profile data"""
     
-    def __init__(
-        self,
-        snowflake_connector: SnowflakeConnector,
-        fmp_client: FMPClient,
-        symbols: List[str],
-        load_to_analytics: bool = True,
-        **kwargs
-    ):
+    def __init__(self, config: Config):
         """
         Initialize Company ETL
         
         Args:
-            snowflake_connector: Snowflake connection
-            fmp_client: FMP API client
-            symbols: List of stock symbols to process
-            load_to_analytics: Whether to update DIM_COMPANY table
-            **kwargs: Additional arguments for BaseETL
+            config: Application configuration
         """
+        # Create instances
+        snowflake_connector = SnowflakeConnector(config.snowflake)
+        fmp_client = FMPClient(config.fmp)
+        
+        # Initialize base class
         super().__init__(
             job_name="company_profile_etl",
             snowflake_connector=snowflake_connector,
             fmp_client=fmp_client,
-            **kwargs
+            batch_size=config.app.batch_size,
+            enable_monitoring=config.app.enable_monitoring
         )
-        self.symbols = symbols
-        self.load_to_analytics = load_to_analytics
-        self.existing_companies = {}
         
-    def extract(self) -> List[Dict[str, Any]]:
+        # Store config for later use
+        self.config = config
+        self.existing_companies = {}
+        self.load_to_analytics = True  # Default to True, can be overridden in extract()
+        
+    def extract(self, symbols: List[str], load_to_analytics: bool = True) -> List[Dict[str, Any]]:
         """
         Extract company profiles from FMP API
         
+        Args:
+            symbols: List of stock symbols to process
+            load_to_analytics: Whether to update DIM_COMPANY table
+            
         Returns:
             List of company profile data
         """
-        logger.info(f"Extracting company profiles for {len(self.symbols)} symbols")
+        self.load_to_analytics = load_to_analytics
+        logger.info(f"Extracting company profiles for {len(symbols)} symbols")
         
         # First, get existing companies to determine what's new vs update
         if self.load_to_analytics:
@@ -60,13 +63,13 @@ class CompanyETL(BaseETL):
         # Use batch endpoint if available for better performance
         if hasattr(self.fmp_client, 'batch_get_company_profiles'):
             try:
-                batch_profiles = self.fmp_client.batch_get_company_profiles(self.symbols)
+                batch_profiles = self.fmp_client.batch_get_company_profiles(symbols)
                 profiles.extend(batch_profiles.values())
                 logger.info(f"Extracted {len(batch_profiles)} profiles in batch")
             except Exception as e:
                 logger.warning(f"Batch extraction failed, falling back to individual: {e}")
                 # Fall back to individual extraction
-                for symbol in self.symbols:
+                for symbol in symbols:
                     profile = self._extract_single_profile(symbol)
                     if profile:
                         profiles.append(profile)
@@ -74,7 +77,7 @@ class CompanyETL(BaseETL):
                         failed_symbols.append(symbol)
         else:
             # Extract individually
-            for symbol in self.symbols:
+            for symbol in symbols:
                 profile = self._extract_single_profile(symbol)
                 if profile:
                     profiles.append(profile)
@@ -88,7 +91,7 @@ class CompanyETL(BaseETL):
         logger.info(f"Successfully extracted {len(profiles)} company profiles")
         
         # Store metadata about extraction
-        self.result.metadata['symbols_requested'] = len(self.symbols)
+        self.result.metadata['symbols_requested'] = len(symbols)
         self.result.metadata['symbols_extracted'] = len(profiles)
         self.result.metadata['symbols_failed'] = len(failed_symbols)
         

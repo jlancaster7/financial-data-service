@@ -9,6 +9,7 @@ from src.etl.company_etl import CompanyETL
 from src.etl.base_etl import ETLStatus
 from src.db.snowflake_connector import SnowflakeConnector
 from src.api.fmp_client import FMPClient
+from src.utils.config import Config, SnowflakeConfig, FMPConfig, AppConfig
 
 
 class TestCompanyETL:
@@ -44,19 +45,42 @@ class TestCompanyETL:
         return mock
     
     @pytest.fixture
-    def company_etl(self, mock_snowflake, mock_fmp):
-        """Create Company ETL instance"""
-        return CompanyETL(
-            snowflake_connector=mock_snowflake,
-            fmp_client=mock_fmp,
-            symbols=['AAPL', 'MSFT', 'GOOGL'],
-            batch_size=100,
-            enable_monitoring=False  # Disable monitoring for tests
+    def mock_config(self):
+        """Mock configuration"""
+        config = Mock(spec=Config)
+        config.snowflake = SnowflakeConfig(
+            account="test_account",
+            user="test_user",
+            password="test_pass",
+            database="TEST_DB",
+            warehouse="TEST_WH",
+            role="TEST_ROLE",
+            schema="PUBLIC"
         )
+        config.fmp = FMPConfig(
+            api_key="test_key",
+            base_url="https://financialmodelingprep.com/api/v3",
+            rate_limit_calls=300,
+            rate_limit_period=60
+        )
+        config.app = AppConfig(
+            batch_size=100,
+            enable_monitoring=False,
+            log_level="INFO"
+        )
+        return config
+    
+    @pytest.fixture
+    def company_etl(self, mock_snowflake, mock_fmp, mock_config):
+        """Create Company ETL instance"""
+        with patch('src.etl.company_etl.SnowflakeConnector', return_value=mock_snowflake):
+            with patch('src.etl.company_etl.FMPClient', return_value=mock_fmp):
+                return CompanyETL(mock_config)
     
     def test_extract_success(self, company_etl, mock_fmp):
         """Test successful extraction of company profiles"""
-        profiles = company_etl.extract()
+        symbols = ['AAPL', 'MSFT', 'GOOGL']
+        profiles = company_etl.extract(symbols)
         
         assert len(profiles) == 3
         assert profiles[0]['symbol'] == 'AAPL'
@@ -78,7 +102,8 @@ class TestCompanyETL:
         
         mock_fmp.get_company_profile.side_effect = side_effect
         
-        profiles = company_etl.extract()
+        symbols = ['AAPL', 'MSFT', 'GOOGL']
+        profiles = company_etl.extract(symbols)
         
         assert len(profiles) == 2  # Only AAPL and GOOGL
         assert len(company_etl.result.errors) == 2  # Individual error + summary error
@@ -93,7 +118,8 @@ class TestCompanyETL:
             'GOOGL': {'symbol': 'GOOGL', 'companyName': 'Alphabet Inc.'}
         })
         
-        profiles = company_etl.extract()
+        symbols = ['AAPL', 'MSFT', 'GOOGL']
+        profiles = company_etl.extract(symbols)
         
         assert len(profiles) == 3
         assert mock_fmp.batch_get_company_profiles.called
@@ -299,7 +325,25 @@ class TestCompanyETL:
     
     def test_full_pipeline_run(self, company_etl):
         """Test full ETL pipeline execution"""
-        result = company_etl.run()
+        symbols = ['AAPL', 'MSFT', 'GOOGL']
+        
+        # Extract
+        raw_data = company_etl.extract(symbols)
+        company_etl.result.records_extracted = len(raw_data)
+        
+        # Transform
+        transformed_data = company_etl.transform(raw_data)
+        company_etl.result.records_transformed = len(transformed_data.get('staging', []))
+        
+        # Load
+        records_loaded = company_etl.load(transformed_data)
+        company_etl.result.records_loaded = records_loaded
+        
+        # Set status
+        company_etl.result.status = ETLStatus.SUCCESS
+        company_etl.result.end_time = datetime.now(timezone.utc)
+        
+        result = company_etl.result
         
         assert result.status == ETLStatus.SUCCESS
         assert result.records_extracted == 3

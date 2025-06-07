@@ -1,0 +1,414 @@
+#!/usr/bin/env python3
+"""
+Main Pipeline Orchestrator - Run all ETL pipelines in proper sequence
+
+This script orchestrates the execution of all ETL pipelines to ensure
+data is loaded in the correct order with proper dependency management.
+"""
+import sys
+import argparse
+from pathlib import Path
+from datetime import datetime, timedelta
+from typing import List, Dict, Any
+from loguru import logger
+
+# Add the src directory to the path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from src.utils.config import Config
+from src.api.fmp_client import FMPClient
+from src.db.snowflake_connector import SnowflakeConnector
+from src.etl.company_etl import CompanyETL
+from src.etl.historical_price_etl import HistoricalPriceETL
+from src.etl.financial_statement_etl import FinancialStatementETL
+from src.etl.base_etl import ETLStatus
+
+
+class PipelineOrchestrator:
+    """Orchestrates the execution of all ETL pipelines"""
+    
+    def __init__(self, config: Config, dry_run: bool = False):
+        self.config = config
+        self.dry_run = dry_run
+        self.fmp_client = FMPClient(config.fmp) if not dry_run else None
+        self.snowflake = SnowflakeConnector(config.snowflake) if not dry_run else None
+        self.results = {}
+        
+    def get_symbols(self, args) -> List[str]:
+        """Get symbols to process based on arguments"""
+        if args.symbols:
+            logger.info(f"Using provided symbols: {args.symbols}")
+            return args.symbols
+        elif args.sp500 and self.fmp_client:
+            logger.info("Fetching S&P 500 constituents...")
+            try:
+                constituents = self.fmp_client.get_sp500_constituents()
+                symbols = [c['symbol'] for c in constituents if c.get('symbol')]
+                logger.info(f"Retrieved {len(symbols)} S&P 500 symbols")
+                return symbols
+            except Exception as e:
+                logger.error(f"Failed to get S&P 500 constituents: {e}")
+                return []
+        else:
+            # Default test symbols
+            logger.warning("No symbols specified, using default test symbols")
+            return ['AAPL', 'MSFT', 'GOOGL']
+    
+    def run_company_etl(self, symbols: List[str], args) -> bool:
+        """Run company profile ETL"""
+        logger.info(f"{'[DRY RUN] ' if self.dry_run else ''}Starting Company Profile ETL...")
+        
+        if self.dry_run:
+            logger.info(f"Would process {len(symbols)} company profiles")
+            self.results['company'] = {'status': 'dry_run', 'symbols': len(symbols)}
+            return True
+        
+        try:
+            etl = CompanyETL(self.config)
+            
+            # Extract data
+            company_data = etl.extract(symbols=symbols, load_to_analytics=not args.skip_analytics)
+            etl.result.records_extracted = len(company_data)
+            
+            # Transform data
+            transformed_data = etl.transform(company_data)
+            etl.result.records_transformed = len(transformed_data.get('staging', []))
+            
+            # Load data
+            records_loaded = etl.load(transformed_data)
+            etl.result.records_loaded = records_loaded
+            
+            # Set status
+            if etl.result.errors:
+                etl.result.status = ETLStatus.PARTIAL
+            else:
+                etl.result.status = ETLStatus.SUCCESS
+            
+            # Get the result
+            result = etl.result
+            
+            self.results['company'] = {
+                'status': result.status.value,
+                'records_loaded': result.records_loaded,
+                'errors': result.errors
+            }
+            
+            success = result.status in [ETLStatus.SUCCESS, ETLStatus.PARTIAL]
+            if success:
+                logger.info(f"✓ Company ETL completed: {result.records_loaded} records loaded")
+            else:
+                logger.error(f"✗ Company ETL failed: {result.errors}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Company ETL failed with exception: {e}")
+            self.results['company'] = {'status': 'failed', 'error': str(e)}
+            return False
+    
+    def run_price_etl(self, symbols: List[str], args) -> bool:
+        """Run historical price ETL"""
+        logger.info(f"{'[DRY RUN] ' if self.dry_run else ''}Starting Historical Price ETL...")
+        
+        # Determine date range
+        if args.from_date:
+            from_date = datetime.strptime(args.from_date, '%Y-%m-%d').date()
+        else:
+            from_date = datetime.now().date() - timedelta(days=args.days_back)
+        
+        to_date = datetime.now().date() if not args.to_date else datetime.strptime(args.to_date, '%Y-%m-%d').date()
+        
+        if self.dry_run:
+            logger.info(f"Would process {len(symbols)} symbols for dates {from_date} to {to_date}")
+            self.results['price'] = {'status': 'dry_run', 'symbols': len(symbols), 'date_range': f"{from_date} to {to_date}"}
+            return True
+        
+        try:
+            etl = HistoricalPriceETL(self.config)
+            
+            # Extract data
+            price_data = etl.extract(symbols=symbols, from_date=from_date, to_date=to_date)
+            etl.result.records_extracted = len(price_data)
+            
+            # Transform data
+            transformed_data = etl.transform(price_data)
+            etl.result.records_transformed = len(transformed_data.get('staging', []))
+            
+            # Load data
+            records_loaded = etl.load(transformed_data)
+            etl.result.records_loaded = records_loaded
+            
+            # Set status
+            if etl.result.errors:
+                etl.result.status = ETLStatus.PARTIAL
+            else:
+                etl.result.status = ETLStatus.SUCCESS
+            
+            # Get the result
+            result = etl.result
+            
+            self.results['price'] = {
+                'status': result.status.value,
+                'records_loaded': result.records_loaded,
+                'errors': result.errors
+            }
+            
+            success = result.status in [ETLStatus.SUCCESS, ETLStatus.PARTIAL]
+            if success:
+                logger.info(f"✓ Price ETL completed: {result.records_loaded} records loaded")
+            else:
+                logger.error(f"✗ Price ETL failed: {result.errors}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Price ETL failed with exception: {e}")
+            self.results['price'] = {'status': 'failed', 'error': str(e)}
+            return False
+    
+    def run_financial_etl(self, symbols: List[str], args) -> bool:
+        """Run financial statement ETL"""
+        logger.info(f"{'[DRY RUN] ' if self.dry_run else ''}Starting Financial Statement ETL...")
+        
+        if self.dry_run:
+            logger.info(f"Would process {len(symbols)} symbols for {args.period} periods (limit: {args.limit})")
+            self.results['financial'] = {'status': 'dry_run', 'symbols': len(symbols), 'period': args.period}
+            return True
+        
+        try:
+            etl = FinancialStatementETL(self.config)
+            
+            # Extract data
+            statement_data = etl.extract(symbols=symbols, period=args.period, limit=args.limit)
+            # Count total records extracted across all statement types
+            total_extracted = sum(len(v) for v in statement_data.values())
+            etl.result.records_extracted = total_extracted
+            
+            # Transform data
+            transformed_data = etl.transform(statement_data)
+            # Count total records transformed
+            total_transformed = sum(len(v) for k, v in transformed_data.items() if k.startswith('staging_'))
+            etl.result.records_transformed = total_transformed
+            
+            # Load data
+            records_loaded = etl.load(transformed_data)
+            etl.result.records_loaded = records_loaded
+            
+            # Set status
+            if etl.result.errors:
+                etl.result.status = ETLStatus.PARTIAL
+            else:
+                etl.result.status = ETLStatus.SUCCESS
+            
+            # Get the result
+            result = etl.result
+            
+            self.results['financial'] = {
+                'status': result.status.value,
+                'records_loaded': result.records_loaded,
+                'errors': result.errors
+            }
+            
+            success = result.status in [ETLStatus.SUCCESS, ETLStatus.PARTIAL]
+            if success:
+                logger.info(f"✓ Financial ETL completed: {result.records_loaded} records loaded")
+            else:
+                logger.error(f"✗ Financial ETL failed: {result.errors}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Financial ETL failed with exception: {e}")
+            self.results['financial'] = {'status': 'failed', 'error': str(e)}
+            return False
+    
+    def run_daily_update(self, args) -> int:
+        """
+        Run all ETL pipelines in the correct sequence
+        
+        Returns:
+            Exit code: 0 for success, 1 for partial success, 2 for failure
+        """
+        start_time = datetime.now()
+        logger.info(f"{'='*60}")
+        logger.info(f"Starting Daily Pipeline Update at {start_time}")
+        logger.info(f"Dry Run: {self.dry_run}")
+        logger.info(f"{'='*60}")
+        
+        # Get symbols to process
+        symbols = self.get_symbols(args)
+        if not symbols:
+            logger.error("No symbols to process")
+            return 2
+        
+        # Track successes
+        all_success = True
+        any_success = False
+        
+        # Run pipelines in dependency order
+        pipelines = []
+        
+        if not args.skip_company:
+            pipelines.append(('company', self.run_company_etl))
+        
+        if not args.skip_price:
+            pipelines.append(('price', self.run_price_etl))
+        
+        if not args.skip_financial:
+            pipelines.append(('financial', self.run_financial_etl))
+        
+        # Execute pipelines
+        for name, pipeline_func in pipelines:
+            logger.info(f"\n{'-'*60}")
+            success = pipeline_func(symbols, args)
+            if success:
+                any_success = True
+            else:
+                all_success = False
+        
+        # Summary
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        
+        logger.info(f"\n{'='*60}")
+        logger.info("Pipeline Execution Summary")
+        logger.info(f"{'='*60}")
+        logger.info(f"Start Time: {start_time}")
+        logger.info(f"End Time: {end_time}")
+        logger.info(f"Duration: {duration:.1f} seconds")
+        logger.info(f"Symbols Processed: {len(symbols)}")
+        
+        # Pipeline results
+        logger.info("\nPipeline Results:")
+        for pipeline, result in self.results.items():
+            status = result.get('status', 'not_run')
+            records = result.get('records_loaded', 0)
+            logger.info(f"  {pipeline.title()}: {status} ({records} records)")
+            if result.get('errors'):
+                for error in result['errors'][:3]:  # Show first 3 errors
+                    logger.error(f"    - {error}")
+        
+        # Determine exit code
+        if all_success:
+            logger.info("\n✓ All pipelines completed successfully")
+            return 0
+        elif any_success:
+            logger.warning("\n⚠ Some pipelines completed with errors")
+            return 1
+        else:
+            logger.error("\n✗ All pipelines failed")
+            return 2
+
+
+def main():
+    """Main execution function"""
+    parser = argparse.ArgumentParser(
+        description="Orchestrate all ETL pipelines for daily data updates",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run all pipelines for default test symbols
+  python run_daily_pipeline.py
+  
+  # Run all pipelines for specific symbols
+  python run_daily_pipeline.py --symbols AAPL MSFT GOOGL
+  
+  # Run all pipelines for S&P 500
+  python run_daily_pipeline.py --sp500
+  
+  # Skip specific pipelines
+  python run_daily_pipeline.py --skip-financial --symbols AAPL
+  
+  # Dry run to see what would be executed
+  python run_daily_pipeline.py --dry-run --sp500
+        """
+    )
+    
+    # Symbol selection
+    symbol_group = parser.add_mutually_exclusive_group()
+    symbol_group.add_argument(
+        "--symbols",
+        nargs="+",
+        help="Specific symbols to process"
+    )
+    symbol_group.add_argument(
+        "--sp500",
+        action="store_true",
+        help="Process all S&P 500 companies"
+    )
+    
+    # Pipeline selection
+    parser.add_argument(
+        "--skip-company",
+        action="store_true",
+        help="Skip company profile ETL"
+    )
+    parser.add_argument(
+        "--skip-price",
+        action="store_true",
+        help="Skip historical price ETL"
+    )
+    parser.add_argument(
+        "--skip-financial",
+        action="store_true",
+        help="Skip financial statement ETL"
+    )
+    
+    # Common options
+    parser.add_argument(
+        "--skip-analytics",
+        action="store_true",
+        help="Skip analytics layer updates"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be executed without running"
+    )
+    
+    # Price ETL specific options
+    parser.add_argument(
+        "--days-back",
+        type=int,
+        default=30,
+        help="Number of days of historical prices (default: 30)"
+    )
+    parser.add_argument(
+        "--from-date",
+        help="Start date for historical prices (YYYY-MM-DD)"
+    )
+    parser.add_argument(
+        "--to-date",
+        help="End date for historical prices (YYYY-MM-DD)"
+    )
+    
+    # Financial ETL specific options
+    parser.add_argument(
+        "--period",
+        choices=['annual', 'quarterly'],
+        default='annual',
+        help="Financial statement period (default: annual)"
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="Number of periods to fetch (default: 5)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Load configuration
+    try:
+        config = Config.load()
+    except Exception as e:
+        logger.error(f"Failed to load configuration: {e}")
+        return 2
+    
+    # Create and run orchestrator
+    orchestrator = PipelineOrchestrator(config, dry_run=args.dry_run)
+    return orchestrator.run_daily_update(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

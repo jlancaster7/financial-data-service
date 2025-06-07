@@ -197,20 +197,28 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 ## Epic 5: Analytics and Orchestration
 **Goal:** Build analytics layer and pipeline orchestration
 
-### Story 5.1: Create Main Pipeline Orchestrator
+### Story 5.1: Create Main Pipeline Orchestrator ✅
 **As a** operations engineer  
 **I want to** run all data loads from a single script  
 **So that** scheduling and monitoring is simplified
 
 **Acceptance Criteria:**
-- [ ] Create run_daily_update function
-- [ ] Orchestrate all ETL jobs with proper sequencing
-- [ ] Add command line arguments for selective runs
-- [ ] Implement proper exit codes for monitoring
-- [ ] Create --dry-run option for testing
+- [x] Create run_daily_update function
+- [x] Orchestrate all ETL jobs with proper sequencing
+- [x] Add command line arguments for selective runs
+- [x] Implement proper exit codes for monitoring
+- [x] Create --dry-run option for testing
 
 **Story Points:** 3  
 **Dependencies:** All previous ETL stories
+
+**Implementation Notes:**
+- Created scripts/run_daily_pipeline.py with PipelineOrchestrator class
+- Supports running individual pipelines or all at once
+- Proper exit codes: 0 for success, 1 for partial success, 2 for failure
+- Command line options for symbol selection, pipeline selection, date ranges
+- Dry run mode for testing without database changes
+- Comprehensive logging and summary reporting
 
 ### Story 5.2: Implement Analytics Layer Updates
 **As a** data analyst  
