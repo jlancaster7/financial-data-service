@@ -122,7 +122,9 @@ financial-data-service/
 │   ├── run_company_etl.py # Run company ETL
 │   ├── run_price_etl.py   # Run historical price ETL
 │   ├── run_financial_etl.py # Run financial statement ETL
-│   └── setup_etl_monitoring.py # Setup monitoring tables
+│   ├── setup_etl_monitoring.py # Setup monitoring tables
+│   ├── check_snowflake_data.py # Verify data in Snowflake
+│   └── recreate_financial_tables.py # Recreate financial tables with new schema
 ├── requirements.txt       # Python dependencies
 ├── setup.py              # Package setup
 ├── .env.example          # Environment template
@@ -273,7 +275,8 @@ financial-data-service/
   - Supports both annual and quarterly periods
   - Loads data to all three RAW tables (RAW_INCOME_STATEMENT, RAW_BALANCE_SHEET, RAW_CASH_FLOW)
   - Uses MERGE for staging tables to prevent duplicates
-  - Updates FACT_FINANCIAL_METRICS with calculated financial ratios
+  - **CRITICAL UPDATE**: Captures filing_date and accepted_date to prevent look-ahead bias
+  - Updates FACT_FINANCIALS with raw financial data (not calculated ratios)
   - Handles all three statement types in a single pipeline
 - `scripts/run_financial_etl.py` - Script to run financial statement ETL:
   - Supports specific symbols or all S&P 500
@@ -289,12 +292,31 @@ financial-data-service/
 - Batch processing for handling large symbol lists
 - Period handling (annual/quarterly) with FMP API compatibility
 - Duplicate prevention using MERGE for all staging tables
-- Financial ratio calculations in FACT_FINANCIAL_METRICS:
-  - Profit Margin = (Net Income / Revenue) * 100
-  - ROE (Return on Equity) = (Net Income / Total Equity) * 100
-  - ROA (Return on Assets) = (Net Income / Total Assets) * 100
-  - Debt-to-Equity = Total Debt / Total Equity
+- **Filing Date Capture**: Critical for quantitative analysis
+  - Prevents look-ahead bias in backtesting
+  - Captures both filing_date and accepted_date from FMP API
+  - Enables proper point-in-time financial analysis
 - Full integration with ETL framework and monitoring
+
+### Critical Schema Enhancement: Filing Dates ✅
+**Challenge:** Original schema didn't capture when financial data was filed, creating look-ahead bias risk
+**Solution Implemented:**
+- Updated all financial statement models to include filing_date and accepted_date
+- Modified staging tables (STG_INCOME_STATEMENT, STG_BALANCE_SHEET, STG_CASH_FLOW) to include filing dates
+- Split FACT_FINANCIAL_METRICS into two tables:
+  - **FACT_FINANCIALS**: Raw financial data with filing dates
+  - **FACT_FINANCIAL_RATIOS**: Calculated metrics (to be implemented separately)
+- Updated ETL pipeline to capture and store filing dates from FMP API responses
+
+**Files Modified:**
+- `sql/03_table_definitions.sql` - Added filing date columns to staging and fact tables
+- `src/models/fmp_models.py` - Updated all financial statement models to include filing dates
+- `scripts/recreate_financial_tables.py` - Script to recreate tables with new schema
+
+**Key Benefits:**
+- Enables proper point-in-time analysis for quantitative strategies
+- Prevents using future information in historical backtests
+- Maintains data integrity for financial research
 
 ## Next Steps (Sprint 3)
 1. Story 4.2: Create Staging Layer Transformations

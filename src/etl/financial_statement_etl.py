@@ -314,7 +314,7 @@ class FinancialStatementETL(BaseETL):
     
     def update_fact_table(self, symbols: List[str], from_date: Optional[date] = None):
         """
-        Update FACT_FINANCIAL_METRICS with calculated metrics
+        Update FACT_FINANCIALS with raw financial data
         
         Args:
             symbols: List of symbols to update
@@ -340,108 +340,112 @@ class FinancialStatementETL(BaseETL):
                         WHERE symbol = ANY(%s)
                     ) t
                     """
-                    result = conn.fetch_one(query, (symbols, symbols, symbols))
+                    result = conn.fetch_all(query, (symbols, symbols, symbols))
+                    result = result[0] if result else None
                     from_date = result['min_date'] if result and result['min_date'] else date.today() - timedelta(days=365*5)
                 
                 # Format symbol list for IN clause
                 symbol_placeholders = ','.join(['%s' for _ in symbols])
                 
-                # Insert/update FACT_FINANCIAL_METRICS with calculated metrics
+                # Insert/update FACT_FINANCIALS with raw financial data
                 merge_query = f"""
-                MERGE INTO ANALYTICS.FACT_FINANCIAL_METRICS AS target
+                MERGE INTO ANALYTICS.FACT_FINANCIALS AS target
                 USING (
                     SELECT 
                         c.company_key,
-                        d.date_key,
+                        fiscal_d.date_key as fiscal_date_key,
+                        filing_d.date_key as filing_date_key,
+                        COALESCE(i.accepted_date, b.accepted_date, cf.accepted_date) as accepted_date,
                         COALESCE(i.period, b.period, cf.period) as period_type,
+                        -- Income Statement fields
                         i.revenue,
+                        i.cost_of_revenue,
                         i.gross_profit,
                         i.operating_income,
                         i.net_income,
                         i.eps,
+                        i.eps_diluted,
+                        NULL as shares_outstanding,  -- Not in our staging tables yet
+                        -- Balance Sheet fields
                         b.total_assets,
+                        NULL as current_assets,  -- Not in our staging tables yet
+                        b.total_liabilities,
+                        NULL as current_liabilities,  -- Not in our staging tables yet
                         b.total_equity,
+                        b.cash_and_equivalents,
                         b.total_debt,
+                        b.net_debt,
+                        -- Cash Flow fields
                         cf.operating_cash_flow,
+                        cf.investing_cash_flow,
+                        cf.financing_cash_flow,
                         cf.free_cash_flow,
-                        -- Calculate financial ratios
-                        CASE 
-                            WHEN i.revenue > 0 
-                            THEN (i.net_income / i.revenue) * 100 
-                            ELSE NULL 
-                        END AS profit_margin,
-                        CASE 
-                            WHEN b.total_equity > 0 
-                            THEN (i.net_income / b.total_equity) * 100 
-                            ELSE NULL 
-                        END AS roe,
-                        CASE 
-                            WHEN b.total_assets > 0 
-                            THEN (i.net_income / b.total_assets) * 100 
-                            ELSE NULL 
-                        END AS roa,
-                        CASE 
-                            WHEN b.total_equity > 0 
-                            THEN b.total_debt / b.total_equity 
-                            ELSE NULL 
-                        END AS debt_to_equity
+                        cf.capital_expenditures,
+                        cf.dividends_paid
                     FROM ANALYTICS.DIM_COMPANY c
-                    INNER JOIN ANALYTICS.DIM_DATE d ON 1=1
                     LEFT JOIN STAGING.STG_INCOME_STATEMENT i 
-                        ON c.symbol = i.symbol 
-                        AND d.date = i.fiscal_date
+                        ON c.symbol = i.symbol
                     LEFT JOIN STAGING.STG_BALANCE_SHEET b 
                         ON c.symbol = b.symbol 
-                        AND d.date = b.fiscal_date
-                        AND COALESCE(i.period, b.period) = b.period
+                        AND i.fiscal_date = b.fiscal_date
+                        AND i.period = b.period
                     LEFT JOIN STAGING.STG_CASH_FLOW cf 
                         ON c.symbol = cf.symbol 
-                        AND d.date = cf.fiscal_date
-                        AND COALESCE(i.period, b.period, cf.period) = cf.period
+                        AND i.fiscal_date = cf.fiscal_date
+                        AND i.period = cf.period
+                    INNER JOIN ANALYTICS.DIM_DATE fiscal_d 
+                        ON fiscal_d.date = i.fiscal_date
+                    LEFT JOIN ANALYTICS.DIM_DATE filing_d 
+                        ON filing_d.date = COALESCE(i.filing_date, b.filing_date, cf.filing_date)
                     WHERE c.symbol IN ({symbol_placeholders})
                       AND c.is_current = TRUE
-                      AND d.date >= %s
-                      AND (i.fiscal_date IS NOT NULL 
-                           OR b.fiscal_date IS NOT NULL 
-                           OR cf.fiscal_date IS NOT NULL)
+                      AND i.fiscal_date >= %s
+                      AND i.fiscal_date IS NOT NULL
                 ) AS source
                 ON target.company_key = source.company_key 
-                   AND target.date_key = source.date_key
+                   AND target.fiscal_date_key = source.fiscal_date_key
                    AND target.period_type = source.period_type
                 WHEN MATCHED THEN UPDATE SET
+                    filing_date_key = source.filing_date_key,
+                    accepted_date = source.accepted_date,
                     revenue = source.revenue,
+                    cost_of_revenue = source.cost_of_revenue,
                     gross_profit = source.gross_profit,
                     operating_income = source.operating_income,
                     net_income = source.net_income,
                     eps = source.eps,
+                    eps_diluted = source.eps_diluted,
                     total_assets = source.total_assets,
+                    total_liabilities = source.total_liabilities,
                     total_equity = source.total_equity,
+                    cash_and_equivalents = source.cash_and_equivalents,
                     total_debt = source.total_debt,
+                    net_debt = source.net_debt,
                     operating_cash_flow = source.operating_cash_flow,
+                    investing_cash_flow = source.investing_cash_flow,
+                    financing_cash_flow = source.financing_cash_flow,
                     free_cash_flow = source.free_cash_flow,
-                    profit_margin = source.profit_margin,
-                    roe = source.roe,
-                    roa = source.roa,
-                    debt_to_equity = source.debt_to_equity
+                    capital_expenditures = source.capital_expenditures,
+                    dividends_paid = source.dividends_paid
                 WHEN NOT MATCHED THEN INSERT (
-                    company_key, date_key, period_type,
-                    revenue, gross_profit, operating_income, net_income, eps,
-                    total_assets, total_equity, total_debt,
-                    operating_cash_flow, free_cash_flow,
-                    profit_margin, roe, roa, debt_to_equity
+                    company_key, fiscal_date_key, filing_date_key, accepted_date, period_type,
+                    revenue, cost_of_revenue, gross_profit, operating_income, net_income, eps, eps_diluted,
+                    total_assets, total_liabilities, total_equity, cash_and_equivalents, total_debt, net_debt,
+                    operating_cash_flow, investing_cash_flow, financing_cash_flow, free_cash_flow, 
+                    capital_expenditures, dividends_paid
                 ) VALUES (
-                    source.company_key, source.date_key, source.period_type,
-                    source.revenue, source.gross_profit, source.operating_income, source.net_income, source.eps,
-                    source.total_assets, source.total_equity, source.total_debt,
-                    source.operating_cash_flow, source.free_cash_flow,
-                    source.profit_margin, source.roe, source.roa, source.debt_to_equity
+                    source.company_key, source.fiscal_date_key, source.filing_date_key, source.accepted_date, source.period_type,
+                    source.revenue, source.cost_of_revenue, source.gross_profit, source.operating_income, source.net_income, source.eps, source.eps_diluted,
+                    source.total_assets, source.total_liabilities, source.total_equity, source.cash_and_equivalents, source.total_debt, source.net_debt,
+                    source.operating_cash_flow, source.investing_cash_flow, source.financing_cash_flow, source.free_cash_flow,
+                    source.capital_expenditures, source.dividends_paid
                 )
                 """
                 
                 # Prepare parameters: symbols + from_date
                 params = list(symbols) + [from_date]
                 affected = conn.execute(merge_query, tuple(params))
-                logger.info(f"Updated {affected} records in FACT_FINANCIAL_METRICS")
+                logger.info(f"Updated {affected} records in FACT_FINANCIALS")
                 
             except Exception as e:
                 logger.error(f"Failed to update fact table: {e}")

@@ -149,6 +149,8 @@ class FinancialStatement:
     fiscal_date: date
     period: str
     reported_currency: str
+    filing_date: Optional[date]
+    accepted_date: Optional[datetime]
     
     def to_raw_base(self) -> Dict[str, Any]:
         """Base raw record format"""
@@ -175,11 +177,23 @@ class IncomeStatement(FinancialStatement):
     @classmethod
     def from_fmp_response(cls, data: Dict[str, Any]) -> 'IncomeStatement':
         """Create IncomeStatement from FMP API response"""
+        # Parse filing date
+        filing_date = None
+        if data.get('filingDate'):
+            filing_date = datetime.strptime(data.get('filingDate'), '%Y-%m-%d').date()
+        
+        # Parse accepted date (includes time)
+        accepted_date = None
+        if data.get('acceptedDate'):
+            accepted_date = datetime.strptime(data.get('acceptedDate'), '%Y-%m-%d %H:%M:%S')
+        
         return cls(
             symbol=data.get('symbol'),
             fiscal_date=datetime.strptime(data.get('date'), '%Y-%m-%d').date(),
             period=data.get('period', 'FY'),
             reported_currency=data.get('reportedCurrency', 'USD'),
+            filing_date=filing_date,
+            accepted_date=accepted_date,
             revenue=data.get('revenue'),
             cost_of_revenue=data.get('costOfRevenue'),
             gross_profit=data.get('grossProfit'),
@@ -201,6 +215,8 @@ class IncomeStatement(FinancialStatement):
             'symbol': self.symbol,
             'fiscal_date': self.fiscal_date,
             'period': self.period,
+            'filing_date': self.filing_date,
+            'accepted_date': self.accepted_date,
             'revenue': self.revenue,
             'cost_of_revenue': self.cost_of_revenue,
             'gross_profit': self.gross_profit,
@@ -225,11 +241,23 @@ class BalanceSheet(FinancialStatement):
     @classmethod
     def from_fmp_response(cls, data: Dict[str, Any]) -> 'BalanceSheet':
         """Create BalanceSheet from FMP API response"""
+        # Parse filing date
+        filing_date = None
+        if data.get('filingDate'):
+            filing_date = datetime.strptime(data.get('filingDate'), '%Y-%m-%d').date()
+        
+        # Parse accepted date (includes time)
+        accepted_date = None
+        if data.get('acceptedDate'):
+            accepted_date = datetime.strptime(data.get('acceptedDate'), '%Y-%m-%d %H:%M:%S')
+        
         return cls(
             symbol=data.get('symbol'),
             fiscal_date=datetime.strptime(data.get('date'), '%Y-%m-%d').date(),
             period=data.get('period', 'FY'),
             reported_currency=data.get('reportedCurrency', 'USD'),
+            filing_date=filing_date,
+            accepted_date=accepted_date,
             total_assets=data.get('totalAssets'),
             total_liabilities=data.get('totalLiabilities'),
             total_equity=data.get('totalEquity') or data.get('totalStockholdersEquity'),
@@ -250,6 +278,8 @@ class BalanceSheet(FinancialStatement):
             'symbol': self.symbol,
             'fiscal_date': self.fiscal_date,
             'period': self.period,
+            'filing_date': self.filing_date,
+            'accepted_date': self.accepted_date,
             'total_assets': self.total_assets,
             'total_liabilities': self.total_liabilities,
             'total_equity': self.total_equity,
@@ -273,11 +303,23 @@ class CashFlow(FinancialStatement):
     @classmethod
     def from_fmp_response(cls, data: Dict[str, Any]) -> 'CashFlow':
         """Create CashFlow from FMP API response"""
+        # Parse filing date
+        filing_date = None
+        if data.get('filingDate'):
+            filing_date = datetime.strptime(data.get('filingDate'), '%Y-%m-%d').date()
+        
+        # Parse accepted date (includes time)
+        accepted_date = None
+        if data.get('acceptedDate'):
+            accepted_date = datetime.strptime(data.get('acceptedDate'), '%Y-%m-%d %H:%M:%S')
+        
         return cls(
             symbol=data.get('symbol'),
             fiscal_date=datetime.strptime(data.get('date'), '%Y-%m-%d').date(),
             period=data.get('period', 'FY'),
             reported_currency=data.get('reportedCurrency', 'USD'),
+            filing_date=filing_date,
+            accepted_date=accepted_date,
             operating_cash_flow=data.get('operatingCashFlow'),
             investing_cash_flow=data.get('netCashProvidedByInvestingActivities'),
             financing_cash_flow=data.get('netCashProvidedByFinancingActivities'),
@@ -298,6 +340,8 @@ class CashFlow(FinancialStatement):
             'symbol': self.symbol,
             'fiscal_date': self.fiscal_date,
             'period': self.period,
+            'filing_date': self.filing_date,
+            'accepted_date': self.accepted_date,
             'operating_cash_flow': self.operating_cash_flow,
             'investing_cash_flow': self.investing_cash_flow,
             'financing_cash_flow': self.financing_cash_flow,

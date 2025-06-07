@@ -268,7 +268,7 @@ class TestFinancialStatementETL:
     @patch('src.etl.financial_statement_etl.SnowflakeConnector')
     @patch('src.etl.financial_statement_etl.FMPClient')
     def test_update_fact_table(self, mock_fmp_class, mock_sf_class, mock_config):
-        """Test updating FACT_FINANCIAL_METRICS"""
+        """Test updating FACT_FINANCIALS"""
         # Setup mocks
         mock_fmp_instance = Mock()
         mock_fmp_class.return_value = mock_fmp_instance
@@ -276,7 +276,7 @@ class TestFinancialStatementETL:
         mock_sf_instance = Mock()
         mock_sf_instance.__enter__ = Mock(return_value=mock_sf_instance)
         mock_sf_instance.__exit__ = Mock(return_value=None)
-        mock_sf_instance.fetch_one.return_value = {'min_date': date(2020, 1, 1)}
+        mock_sf_instance.fetch_all.return_value = [{'min_date': date(2020, 1, 1)}]
         mock_sf_instance.execute.return_value = 10
         mock_sf_class.return_value = mock_sf_instance
         
@@ -287,7 +287,7 @@ class TestFinancialStatementETL:
         etl.update_fact_table(['AAPL', 'MSFT'])
         
         # Verify
-        mock_sf_instance.fetch_one.assert_called_once()  # To get min date
+        mock_sf_instance.fetch_all.assert_called_once()  # To get min date
         mock_sf_instance.execute.assert_called_once()  # MERGE statement
     
     @patch('src.etl.financial_statement_etl.SnowflakeConnector')
@@ -307,7 +307,7 @@ class TestFinancialStatementETL:
         mock_sf_instance.bulk_insert.return_value = 1
         mock_sf_instance.merge.return_value = 1
         mock_sf_instance.execute.return_value = 1
-        mock_sf_instance.fetch_one.return_value = {'min_date': date(2020, 1, 1)}
+        mock_sf_instance.fetch_all.return_value = [{'min_date': date(2020, 1, 1)}]
         mock_sf_class.return_value = mock_sf_instance
         
         # Create ETL instance

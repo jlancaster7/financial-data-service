@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS STG_INCOME_STATEMENT (
     symbol VARCHAR(10),
     fiscal_date DATE,
     period VARCHAR(10),
+    filing_date DATE,
+    accepted_date TIMESTAMP_NTZ,
     revenue NUMBER(20,2),
     cost_of_revenue NUMBER(20,2),
     gross_profit NUMBER(20,2),
@@ -105,6 +107,8 @@ CREATE TABLE IF NOT EXISTS STG_BALANCE_SHEET (
     symbol VARCHAR(10),
     fiscal_date DATE,
     period VARCHAR(10),
+    filing_date DATE,
+    accepted_date TIMESTAMP_NTZ,
     total_assets NUMBER(20,2),
     total_liabilities NUMBER(20,2),
     total_equity NUMBER(20,2),
@@ -119,6 +123,8 @@ CREATE TABLE IF NOT EXISTS STG_CASH_FLOW (
     symbol VARCHAR(10),
     fiscal_date DATE,
     period VARCHAR(10),
+    filing_date DATE,
+    accepted_date TIMESTAMP_NTZ,
     operating_cash_flow NUMBER(20,2),
     investing_cash_flow NUMBER(20,2),
     financing_cash_flow NUMBER(20,2),
@@ -179,28 +185,85 @@ CREATE TABLE IF NOT EXISTS FACT_DAILY_PRICES (
     FOREIGN KEY (date_key) REFERENCES DIM_DATE(date_key)
 );
 
-CREATE TABLE IF NOT EXISTS FACT_FINANCIAL_METRICS (
-    metric_key NUMBER AUTOINCREMENT PRIMARY KEY,
-    company_key NUMBER,
-    date_key NUMBER,
-    period_type VARCHAR(10),
+-- Fact table for raw financial statement data
+CREATE TABLE IF NOT EXISTS FACT_FINANCIALS (
+    financial_key NUMBER AUTOINCREMENT PRIMARY KEY,
+    company_key NUMBER NOT NULL,
+    fiscal_date_key NUMBER NOT NULL,
+    filing_date_key NUMBER NOT NULL,
+    accepted_date TIMESTAMP_NTZ NOT NULL,
+    period_type VARCHAR(10) NOT NULL,
+    -- Income Statement fields
     revenue NUMBER(20,2),
+    cost_of_revenue NUMBER(20,2),
     gross_profit NUMBER(20,2),
+    operating_expenses NUMBER(20,2),
     operating_income NUMBER(20,2),
     net_income NUMBER(20,2),
     eps NUMBER(10,4),
+    eps_diluted NUMBER(10,4),
+    shares_outstanding NUMBER(20),
+    -- Balance Sheet fields
     total_assets NUMBER(20,2),
+    current_assets NUMBER(20,2),
+    total_liabilities NUMBER(20,2),
+    current_liabilities NUMBER(20,2),
     total_equity NUMBER(20,2),
+    cash_and_equivalents NUMBER(20,2),
     total_debt NUMBER(20,2),
+    net_debt NUMBER(20,2),
+    -- Cash Flow fields
     operating_cash_flow NUMBER(20,2),
+    investing_cash_flow NUMBER(20,2),
+    financing_cash_flow NUMBER(20,2),
     free_cash_flow NUMBER(20,2),
-    profit_margin NUMBER(10,4),
-    roe NUMBER(10,4),
-    roa NUMBER(10,4),
-    debt_to_equity NUMBER(10,4),
+    capital_expenditures NUMBER(20,2),
+    dividends_paid NUMBER(20,2),
+    -- Metadata
+    created_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     FOREIGN KEY (company_key) REFERENCES DIM_COMPANY(company_key),
-    FOREIGN KEY (date_key) REFERENCES DIM_DATE(date_key)
+    FOREIGN KEY (fiscal_date_key) REFERENCES DIM_DATE(date_key),
+    FOREIGN KEY (filing_date_key) REFERENCES DIM_DATE(date_key)
 );
+
+-- Fact table for calculated financial ratios
+CREATE TABLE IF NOT EXISTS FACT_FINANCIAL_RATIOS (
+    ratio_key NUMBER AUTOINCREMENT PRIMARY KEY,
+    financial_key NUMBER NOT NULL,
+    company_key NUMBER NOT NULL,
+    calculation_date_key NUMBER NOT NULL,
+    -- Profitability Ratios
+    gross_margin NUMBER(10,4),
+    operating_margin NUMBER(10,4),
+    profit_margin NUMBER(10,4),
+    roe NUMBER(10,4),  -- Return on Equity
+    roa NUMBER(10,4),  -- Return on Assets
+    -- Liquidity Ratios
+    current_ratio NUMBER(10,4),
+    quick_ratio NUMBER(10,4),
+    -- Leverage Ratios
+    debt_to_equity NUMBER(10,4),
+    debt_to_assets NUMBER(10,4),
+    -- Efficiency Ratios
+    asset_turnover NUMBER(10,4),
+    -- Per Share Metrics
+    book_value_per_share NUMBER(10,4),
+    -- Price-based ratios (to be calculated daily with price data)
+    pe_ratio NUMBER(10,4),
+    pb_ratio NUMBER(10,4),
+    ps_ratio NUMBER(10,4),
+    ev_to_ebitda NUMBER(10,4),
+    -- Metadata
+    created_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    FOREIGN KEY (financial_key) REFERENCES FACT_FINANCIALS(financial_key),
+    FOREIGN KEY (company_key) REFERENCES DIM_COMPANY(company_key),
+    FOREIGN KEY (calculation_date_key) REFERENCES DIM_DATE(date_key)
+);
+
+-- Create indexes for performance
+CREATE INDEX idx_fact_financials_company_date ON FACT_FINANCIALS(company_key, fiscal_date_key);
+CREATE INDEX idx_fact_financials_accepted ON FACT_FINANCIALS(accepted_date);
+CREATE INDEX idx_fact_ratios_company_date ON FACT_FINANCIAL_RATIOS(company_key, calculation_date_key);
 
 -- Grant table privileges
 GRANT SELECT ON ALL TABLES IN SCHEMA RAW_DATA TO ROLE EQUITY_DATA_READER;
