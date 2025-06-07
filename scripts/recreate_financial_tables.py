@@ -113,10 +113,13 @@ def main():
                     revenue NUMBER(20,2),
                     cost_of_revenue NUMBER(20,2),
                     gross_profit NUMBER(20,2),
+                    operating_expenses NUMBER(20,2),
                     operating_income NUMBER(20,2),
                     net_income NUMBER(20,2),
                     eps NUMBER(10,4),
                     eps_diluted NUMBER(10,4),
+                    shares_outstanding NUMBER(20),
+                    shares_outstanding_diluted NUMBER(20),
                     loaded_timestamp TIMESTAMP_NTZ,
                     PRIMARY KEY (symbol, fiscal_date, period)
                 )""",
@@ -127,7 +130,9 @@ def main():
                     filing_date DATE,
                     accepted_date TIMESTAMP_NTZ,
                     total_assets NUMBER(20,2),
+                    current_assets NUMBER(20,2),
                     total_liabilities NUMBER(20,2),
+                    current_liabilities NUMBER(20,2),
                     total_equity NUMBER(20,2),
                     cash_and_equivalents NUMBER(20,2),
                     total_debt NUMBER(20,2),
@@ -160,25 +165,101 @@ def main():
             logger.info("\nCreating ANALYTICS fact tables...")
             connector.execute("USE SCHEMA EQUITY_DATA.ANALYTICS")
             
-            # Execute the fact table creation from the SQL file
-            # Extract just the FACT_FINANCIALS and FACT_FINANCIAL_RATIOS creation
-            start_idx = sql_content.find("-- Fact table for raw financial statement data")
-            end_idx = sql_content.find("-- Grant table privileges")
+            # Create FACT_FINANCIALS table
+            fact_financials_sql = """
+            CREATE TABLE IF NOT EXISTS FACT_FINANCIALS (
+                financial_key NUMBER AUTOINCREMENT PRIMARY KEY,
+                company_key NUMBER NOT NULL,
+                fiscal_date_key NUMBER NOT NULL,
+                filing_date_key NUMBER NOT NULL,
+                accepted_date TIMESTAMP_NTZ NOT NULL,
+                period_type VARCHAR(10) NOT NULL,
+                -- Income Statement fields
+                revenue NUMBER(20,2),
+                cost_of_revenue NUMBER(20,2),
+                gross_profit NUMBER(20,2),
+                operating_expenses NUMBER(20,2),
+                operating_income NUMBER(20,2),
+                net_income NUMBER(20,2),
+                eps NUMBER(10,4),
+                eps_diluted NUMBER(10,4),
+                shares_outstanding NUMBER(20),
+                -- Balance Sheet fields
+                total_assets NUMBER(20,2),
+                current_assets NUMBER(20,2),
+                total_liabilities NUMBER(20,2),
+                current_liabilities NUMBER(20,2),
+                total_equity NUMBER(20,2),
+                cash_and_equivalents NUMBER(20,2),
+                total_debt NUMBER(20,2),
+                net_debt NUMBER(20,2),
+                -- Cash Flow fields
+                operating_cash_flow NUMBER(20,2),
+                investing_cash_flow NUMBER(20,2),
+                financing_cash_flow NUMBER(20,2),
+                free_cash_flow NUMBER(20,2),
+                capital_expenditures NUMBER(20,2),
+                dividends_paid NUMBER(20,2),
+                -- Metadata
+                created_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+                FOREIGN KEY (company_key) REFERENCES DIM_COMPANY(company_key),
+                FOREIGN KEY (fiscal_date_key) REFERENCES DIM_DATE(date_key),
+                FOREIGN KEY (filing_date_key) REFERENCES DIM_DATE(date_key)
+            )
+            """
+            connector.execute(fact_financials_sql)
+            logger.info("✓ Created FACT_FINANCIALS table")
             
-            if start_idx != -1 and end_idx != -1:
-                fact_tables_sql = sql_content[start_idx:end_idx]
-                
-                # Split and execute
-                statements = [stmt.strip() for stmt in fact_tables_sql.split(';') if stmt.strip() and not stmt.strip().startswith('--')]
-                
-                for stmt in statements:
-                    try:
-                        connector.execute(stmt)
-                        logger.info("✓ Created fact table or index")
-                    except Exception as e:
-                        logger.error(f"Failed to execute: {e}")
-                        logger.error(f"Statement: {stmt[:100]}...")
-                        raise
+            # Create FACT_FINANCIAL_RATIOS table
+            fact_ratios_sql = """
+            CREATE TABLE IF NOT EXISTS FACT_FINANCIAL_RATIOS (
+                ratio_key NUMBER AUTOINCREMENT PRIMARY KEY,
+                financial_key NUMBER NOT NULL,
+                company_key NUMBER NOT NULL,
+                calculation_date_key NUMBER NOT NULL,
+                -- Profitability Ratios
+                gross_margin NUMBER(10,4),
+                operating_margin NUMBER(10,4),
+                profit_margin NUMBER(10,4),
+                roe NUMBER(10,4),  -- Return on Equity
+                roa NUMBER(10,4),  -- Return on Assets
+                -- Liquidity Ratios
+                current_ratio NUMBER(10,4),
+                quick_ratio NUMBER(10,4),
+                -- Leverage Ratios
+                debt_to_equity NUMBER(10,4),
+                debt_to_assets NUMBER(10,4),
+                -- Efficiency Ratios
+                asset_turnover NUMBER(10,4),
+                -- Per Share Metrics
+                book_value_per_share NUMBER(10,4),
+                -- Price-based ratios (to be calculated daily with price data)
+                pe_ratio NUMBER(10,4),
+                pb_ratio NUMBER(10,4),
+                ps_ratio NUMBER(10,4),
+                ev_to_ebitda NUMBER(10,4),
+                -- Metadata
+                created_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+                FOREIGN KEY (financial_key) REFERENCES FACT_FINANCIALS(financial_key),
+                FOREIGN KEY (company_key) REFERENCES DIM_COMPANY(company_key),
+                FOREIGN KEY (calculation_date_key) REFERENCES DIM_DATE(date_key)
+            )
+            """
+            connector.execute(fact_ratios_sql)
+            logger.info("✓ Created FACT_FINANCIAL_RATIOS table")
+            
+            # Create clustering keys for performance optimization
+            clustering_keys = [
+                "ALTER TABLE FACT_FINANCIALS CLUSTER BY (company_key, fiscal_date_key)",
+                "ALTER TABLE FACT_FINANCIAL_RATIOS CLUSTER BY (company_key, calculation_date_key)"
+            ]
+            
+            for cluster_sql in clustering_keys:
+                try:
+                    connector.execute(cluster_sql)
+                    logger.info("✓ Added clustering key")
+                except Exception as e:
+                    logger.warning(f"Clustering key warning: {e}")
             
             # Grant permissions
             connector.execute("GRANT SELECT ON ALL TABLES IN SCHEMA RAW_DATA TO ROLE EQUITY_DATA_READER")

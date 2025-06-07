@@ -95,10 +95,13 @@ CREATE TABLE IF NOT EXISTS STG_INCOME_STATEMENT (
     revenue NUMBER(20,2),
     cost_of_revenue NUMBER(20,2),
     gross_profit NUMBER(20,2),
+    operating_expenses NUMBER(20,2),
     operating_income NUMBER(20,2),
     net_income NUMBER(20,2),
     eps NUMBER(10,4),
     eps_diluted NUMBER(10,4),
+    shares_outstanding NUMBER(20),
+    shares_outstanding_diluted NUMBER(20),
     loaded_timestamp TIMESTAMP_NTZ,
     PRIMARY KEY (symbol, fiscal_date, period)
 );
@@ -110,7 +113,9 @@ CREATE TABLE IF NOT EXISTS STG_BALANCE_SHEET (
     filing_date DATE,
     accepted_date TIMESTAMP_NTZ,
     total_assets NUMBER(20,2),
+    current_assets NUMBER(20,2),
     total_liabilities NUMBER(20,2),
+    current_liabilities NUMBER(20,2),
     total_equity NUMBER(20,2),
     cash_and_equivalents NUMBER(20,2),
     total_debt NUMBER(20,2),
@@ -260,10 +265,9 @@ CREATE TABLE IF NOT EXISTS FACT_FINANCIAL_RATIOS (
     FOREIGN KEY (calculation_date_key) REFERENCES DIM_DATE(date_key)
 );
 
--- Create indexes for performance
-CREATE INDEX idx_fact_financials_company_date ON FACT_FINANCIALS(company_key, fiscal_date_key);
-CREATE INDEX idx_fact_financials_accepted ON FACT_FINANCIALS(accepted_date);
-CREATE INDEX idx_fact_ratios_company_date ON FACT_FINANCIAL_RATIOS(company_key, calculation_date_key);
+-- Add clustering keys for performance optimization in Snowflake
+ALTER TABLE FACT_FINANCIALS CLUSTER BY (company_key, fiscal_date_key);
+ALTER TABLE FACT_FINANCIAL_RATIOS CLUSTER BY (company_key, calculation_date_key);
 
 -- Grant table privileges
 GRANT SELECT ON ALL TABLES IN SCHEMA RAW_DATA TO ROLE EQUITY_DATA_READER;

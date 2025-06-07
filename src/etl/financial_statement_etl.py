@@ -235,7 +235,11 @@ class FinancialStatementETL(BaseETL):
                     affected = conn.merge(
                         table='STAGING.STG_INCOME_STATEMENT',
                         data=transformed_data['income']['staging'],
-                        merge_keys=['symbol', 'fiscal_date', 'period']
+                        merge_keys=['symbol', 'fiscal_date', 'period'],
+                        update_columns=['filing_date', 'accepted_date', 'revenue', 'cost_of_revenue', 
+                                      'gross_profit', 'operating_expenses', 'operating_income', 'net_income', 
+                                      'eps', 'eps_diluted', 'shares_outstanding', 'shares_outstanding_diluted', 
+                                      'loaded_timestamp']
                     )
                     total_loaded += affected or 0
                     logger.info(f"Merged {affected} records to STG_INCOME_STATEMENT")
@@ -267,7 +271,10 @@ class FinancialStatementETL(BaseETL):
                     affected = conn.merge(
                         table='STAGING.STG_BALANCE_SHEET',
                         data=transformed_data['balance']['staging'],
-                        merge_keys=['symbol', 'fiscal_date', 'period']
+                        merge_keys=['symbol', 'fiscal_date', 'period'],
+                        update_columns=['filing_date', 'accepted_date', 'total_assets', 'current_assets',
+                                      'total_liabilities', 'current_liabilities', 'total_equity', 
+                                      'cash_and_equivalents', 'total_debt', 'net_debt', 'loaded_timestamp']
                     )
                     total_loaded += affected or 0
                     logger.info(f"Merged {affected} records to STG_BALANCE_SHEET")
@@ -324,25 +331,29 @@ class FinancialStatementETL(BaseETL):
             try:
                 # If no from_date, get the oldest date in staging tables
                 if not from_date:
-                    query = """
+                    # Format symbol list for IN clause
+                    symbol_placeholders = ','.join(['%s' for _ in symbols])
+                    query = f"""
                     SELECT MIN(fiscal_date) as min_date
                     FROM (
                         SELECT MIN(fiscal_date) as fiscal_date
                         FROM STAGING.STG_INCOME_STATEMENT
-                        WHERE symbol = ANY(%s)
+                        WHERE symbol IN ({symbol_placeholders})
                         UNION ALL
                         SELECT MIN(fiscal_date) as fiscal_date
                         FROM STAGING.STG_BALANCE_SHEET
-                        WHERE symbol = ANY(%s)
+                        WHERE symbol IN ({symbol_placeholders})
                         UNION ALL
                         SELECT MIN(fiscal_date) as fiscal_date
                         FROM STAGING.STG_CASH_FLOW
-                        WHERE symbol = ANY(%s)
+                        WHERE symbol IN ({symbol_placeholders})
                     ) t
                     """
-                    result = conn.fetch_all(query, (symbols, symbols, symbols))
+                    # Provide symbols three times for the three IN clauses
+                    params = list(symbols) * 3
+                    result = conn.fetch_all(query, tuple(params))
                     result = result[0] if result else None
-                    from_date = result['min_date'] if result and result['min_date'] else date.today() - timedelta(days=365*5)
+                    from_date = result['MIN_DATE'] if result and result.get('MIN_DATE') else date.today() - timedelta(days=365*5)
                 
                 # Format symbol list for IN clause
                 symbol_placeholders = ','.join(['%s' for _ in symbols])
@@ -361,16 +372,17 @@ class FinancialStatementETL(BaseETL):
                         i.revenue,
                         i.cost_of_revenue,
                         i.gross_profit,
+                        i.operating_expenses,
                         i.operating_income,
                         i.net_income,
                         i.eps,
                         i.eps_diluted,
-                        NULL as shares_outstanding,  -- Not in our staging tables yet
+                        i.shares_outstanding,
                         -- Balance Sheet fields
                         b.total_assets,
-                        NULL as current_assets,  -- Not in our staging tables yet
+                        b.current_assets,
                         b.total_liabilities,
-                        NULL as current_liabilities,  -- Not in our staging tables yet
+                        b.current_liabilities,
                         b.total_equity,
                         b.cash_and_equivalents,
                         b.total_debt,
@@ -411,12 +423,16 @@ class FinancialStatementETL(BaseETL):
                     revenue = source.revenue,
                     cost_of_revenue = source.cost_of_revenue,
                     gross_profit = source.gross_profit,
+                    operating_expenses = source.operating_expenses,
                     operating_income = source.operating_income,
                     net_income = source.net_income,
                     eps = source.eps,
                     eps_diluted = source.eps_diluted,
+                    shares_outstanding = source.shares_outstanding,
                     total_assets = source.total_assets,
+                    current_assets = source.current_assets,
                     total_liabilities = source.total_liabilities,
+                    current_liabilities = source.current_liabilities,
                     total_equity = source.total_equity,
                     cash_and_equivalents = source.cash_and_equivalents,
                     total_debt = source.total_debt,
@@ -429,14 +445,14 @@ class FinancialStatementETL(BaseETL):
                     dividends_paid = source.dividends_paid
                 WHEN NOT MATCHED THEN INSERT (
                     company_key, fiscal_date_key, filing_date_key, accepted_date, period_type,
-                    revenue, cost_of_revenue, gross_profit, operating_income, net_income, eps, eps_diluted,
-                    total_assets, total_liabilities, total_equity, cash_and_equivalents, total_debt, net_debt,
+                    revenue, cost_of_revenue, gross_profit, operating_expenses, operating_income, net_income, eps, eps_diluted, shares_outstanding,
+                    total_assets, current_assets, total_liabilities, current_liabilities, total_equity, cash_and_equivalents, total_debt, net_debt,
                     operating_cash_flow, investing_cash_flow, financing_cash_flow, free_cash_flow, 
                     capital_expenditures, dividends_paid
                 ) VALUES (
                     source.company_key, source.fiscal_date_key, source.filing_date_key, source.accepted_date, source.period_type,
-                    source.revenue, source.cost_of_revenue, source.gross_profit, source.operating_income, source.net_income, source.eps, source.eps_diluted,
-                    source.total_assets, source.total_liabilities, source.total_equity, source.cash_and_equivalents, source.total_debt, source.net_debt,
+                    source.revenue, source.cost_of_revenue, source.gross_profit, source.operating_expenses, source.operating_income, source.net_income, source.eps, source.eps_diluted, source.shares_outstanding,
+                    source.total_assets, source.current_assets, source.total_liabilities, source.current_liabilities, source.total_equity, source.cash_and_equivalents, source.total_debt, source.net_debt,
                     source.operating_cash_flow, source.investing_cash_flow, source.financing_cash_flow, source.free_cash_flow,
                     source.capital_expenditures, source.dividends_paid
                 )

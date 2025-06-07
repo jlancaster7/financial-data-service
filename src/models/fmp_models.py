@@ -169,10 +169,13 @@ class IncomeStatement(FinancialStatement):
     revenue: Optional[float]
     cost_of_revenue: Optional[float]
     gross_profit: Optional[float]
+    operating_expenses: Optional[float]
     operating_income: Optional[float]
     net_income: Optional[float]
     eps: Optional[float]
     eps_diluted: Optional[float]
+    shares_outstanding: Optional[float]
+    shares_outstanding_diluted: Optional[float]
     
     @classmethod
     def from_fmp_response(cls, data: Dict[str, Any]) -> 'IncomeStatement':
@@ -197,10 +200,13 @@ class IncomeStatement(FinancialStatement):
             revenue=data.get('revenue'),
             cost_of_revenue=data.get('costOfRevenue'),
             gross_profit=data.get('grossProfit'),
+            operating_expenses=data.get('operatingExpenses'),
             operating_income=data.get('operatingIncome'),
             net_income=data.get('netIncome'),
             eps=data.get('eps'),
-            eps_diluted=data.get('epsDiluted')
+            eps_diluted=data.get('epsDiluted'),
+            shares_outstanding=data.get('weightedAverageShsOut'),
+            shares_outstanding_diluted=data.get('weightedAverageShsOutDil')
         )
     
     def to_raw_record(self) -> Dict[str, Any]:
@@ -220,10 +226,13 @@ class IncomeStatement(FinancialStatement):
             'revenue': self.revenue,
             'cost_of_revenue': self.cost_of_revenue,
             'gross_profit': self.gross_profit,
+            'operating_expenses': self.operating_expenses,
             'operating_income': self.operating_income,
             'net_income': self.net_income,
             'eps': self.eps,
             'eps_diluted': self.eps_diluted,
+            'shares_outstanding': self.shares_outstanding,
+            'shares_outstanding_diluted': self.shares_outstanding_diluted,
             'loaded_timestamp': datetime.now(timezone.utc)
         }
 
@@ -232,7 +241,9 @@ class IncomeStatement(FinancialStatement):
 class BalanceSheet(FinancialStatement):
     """Model for balance sheet data"""
     total_assets: Optional[float]
+    current_assets: Optional[float]
     total_liabilities: Optional[float]
+    current_liabilities: Optional[float]
     total_equity: Optional[float]
     cash_and_equivalents: Optional[float]
     total_debt: Optional[float]
@@ -259,7 +270,9 @@ class BalanceSheet(FinancialStatement):
             filing_date=filing_date,
             accepted_date=accepted_date,
             total_assets=data.get('totalAssets'),
+            current_assets=data.get('totalCurrentAssets'),
             total_liabilities=data.get('totalLiabilities'),
+            current_liabilities=data.get('totalCurrentLiabilities'),
             total_equity=data.get('totalEquity') or data.get('totalStockholdersEquity'),
             cash_and_equivalents=data.get('cashAndCashEquivalents'),
             total_debt=data.get('totalDebt'),
@@ -281,7 +294,9 @@ class BalanceSheet(FinancialStatement):
             'filing_date': self.filing_date,
             'accepted_date': self.accepted_date,
             'total_assets': self.total_assets,
+            'current_assets': self.current_assets,
             'total_liabilities': self.total_liabilities,
+            'current_liabilities': self.current_liabilities,
             'total_equity': self.total_equity,
             'cash_and_equivalents': self.cash_and_equivalents,
             'total_debt': self.total_debt,
@@ -325,7 +340,7 @@ class CashFlow(FinancialStatement):
             financing_cash_flow=data.get('netCashProvidedByFinancingActivities'),
             free_cash_flow=data.get('freeCashFlow'),
             capital_expenditures=data.get('capitalExpenditure'),
-            dividends_paid=data.get('dividendsPaid')
+            dividends_paid=data.get('commonDividendsPaid') or data.get('netDividendsPaid')
         )
     
     def to_raw_record(self) -> Dict[str, Any]:

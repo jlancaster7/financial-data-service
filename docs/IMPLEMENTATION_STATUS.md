@@ -318,6 +318,28 @@ financial-data-service/
 - Prevents using future information in historical backtests
 - Maintains data integrity for financial research
 
+### Field Mapping Improvements ✅
+**Challenge:** Several FMP API fields were not being captured, resulting in NULL columns in the database
+**Solution Implemented:**
+- Fixed field mappings for income statements:
+  - `operatingExpenses` → `operating_expenses`
+  - `weightedAverageShsOut` → `shares_outstanding` (was looking for wrong field)
+  - Added `weightedAverageShsOutDil` → `shares_outstanding_diluted`
+- Fixed field mappings for balance sheets:
+  - `totalCurrentAssets` → `current_assets`
+  - `totalCurrentLiabilities` → `current_liabilities`
+- Fixed field mappings for cash flows:
+  - `commonDividendsPaid` → `dividends_paid` (with fallback to `netDividendsPaid`)
+
+**Files Modified:**
+- `src/models/fmp_models.py` - Updated field mappings in all financial statement models
+- `docs/FMP_FIELD_MAPPINGS.md` - Created comprehensive field mapping documentation
+
+**Key Benefits:**
+- All available financial data from FMP API is now properly captured
+- No more NULL columns for fields that have data in the API
+- Better data completeness for financial analysis
+
 ## Next Steps (Sprint 3)
 1. Story 4.2: Create Staging Layer Transformations
 2. Story 5.1: Create Main Pipeline Orchestrator
