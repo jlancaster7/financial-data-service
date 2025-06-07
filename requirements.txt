@@ -1,0 +1,38 @@
+# Financial Data Service Dependencies
+
+# Snowflake connector
+snowflake-connector-python==3.5.0
+snowflake-sqlalchemy==1.5.0
+
+# API and web requests
+requests==2.31.0
+urllib3<2.0.0,>=1.21.1  # Compatible with snowflake-connector-python
+
+# Data processing
+pandas==2.1.4
+numpy==1.26.2
+
+# Environment and configuration
+python-dotenv==1.0.0
+
+# Logging and monitoring
+loguru==0.7.2
+
+# Date and time handling
+python-dateutil==2.8.2
+
+# Rate limiting
+ratelimit==2.2.1
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Code quality
+black==23.12.0
+flake8==6.1.0
+mypy==1.7.1
+
+# Type hints
+types-requests==2.28.11.8  # Compatible with urllib3<2.0.0
