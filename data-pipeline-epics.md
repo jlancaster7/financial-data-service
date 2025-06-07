@@ -12,12 +12,12 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** we have a properly structured data warehouse
 
 **Acceptance Criteria:**
-- [ ] Create QUANT_PLATFORM database
-- [ ] Create schemas: RAW, STAGING, ANALYTICS, METRICS
-- [ ] Execute all CREATE TABLE statements from the schema document
-- [ ] Create the V_EQUITY_SCREENING view
-- [ ] Set up appropriate roles and permissions
-- [ ] Document connection parameters
+- [x] Create EQUITY_DATA database
+- [x] Create schemas: RAW_DATA, STAGING, ANALYTICS
+- [x] Execute all CREATE TABLE statements for three-layer architecture
+- [x] Create and populate DIM_DATE dimension table
+- [x] Set up appropriate roles (EQUITY_DATA_LOADER, EQUITY_DATA_READER)
+- [x] Document connection parameters
 
 **Story Points:** 3  
 **Dependencies:** Snowflake account access
@@ -28,12 +28,12 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** the team can run the pipeline locally
 
 **Acceptance Criteria:**
-- [ ] Create project structure with all directories
-- [ ] Set up requirements.txt with dependencies
-- [ ] Create .env.example file with all required variables
-- [ ] Set up logging configuration
-- [ ] Create README with setup instructions
-- [ ] Verify Python 3.9+ compatibility
+- [x] Create project structure with all directories
+- [x] Set up requirements.txt with dependencies
+- [x] Create .env.example file with all required variables
+- [x] Set up logging configuration (using loguru)
+- [x] Create README with setup instructions
+- [x] Set up GitHub repository with CI/CD pipeline
 
 **Story Points:** 2  
 **Dependencies:** None
@@ -44,11 +44,11 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** all scripts can easily interact with Snowflake
 
 **Acceptance Criteria:**
-- [ ] Implement `snowflake_connector.py` with connection management
-- [ ] Add write_to_snowflake function with error handling
-- [ ] Add execute_query function for reading data
-- [ ] Test connection with all team member credentials
-- [ ] Handle connection timeouts and retries
+- [x] Implement `snowflake_connector.py` with connection management
+- [x] Add bulk_insert function with error handling
+- [x] Add execute and fetch functions for reading data
+- [x] Implement context managers for automatic cleanup
+- [x] Handle connection pooling and retries
 
 **Story Points:** 3  
 **Dependencies:** Story 1.1, 1.2
@@ -64,12 +64,13 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** we can fetch data without hitting API limits
 
 **Acceptance Criteria:**
-- [ ] Create FMPLoader class with rate limiting (750 req/min)
-- [ ] Implement fetch_historical_prices method
-- [ ] Implement fetch_company_profile method
-- [ ] Implement fetch_fundamentals method
-- [ ] Add proper error handling and logging
-- [ ] Test with real API key
+- [x] Create FMPClient class with rate limiting (300 req/min)
+- [x] Implement get_historical_prices method
+- [x] Implement get_company_profile method
+- [x] Implement get_income_statement, get_balance_sheet, get_cash_flow methods
+- [x] Add proper error handling and logging
+- [x] Test with real API key
+- [x] Add additional endpoints (ratios, metrics, market cap, etc.)
 
 **Story Points:** 5  
 **Dependencies:** Story 1.2
@@ -80,9 +81,10 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** data loads correctly into our tables
 
 **Acceptance Criteria:**
-- [ ] Map FMP price data fields to EQUITY_PRICES columns
-- [ ] Map FMP profile fields to COMPANY_INFO columns
-- [ ] Map FMP fundamentals to COMPANY_FUNDAMENTALS columns
+- [ ] Transform FMP JSON to RAW_HISTORICAL_PRICES (VARIANT storage)
+- [ ] Transform FMP profile to RAW_COMPANY_PROFILE
+- [ ] Transform FMP statements to RAW_INCOME_STATEMENT, RAW_BALANCE_SHEET, RAW_CASH_FLOW
+- [ ] Create staging layer transformations (JSON to structured)
 - [ ] Handle null values and data type conversions
 - [ ] Create unit tests for transformations
 
@@ -94,122 +96,127 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 ## Epic 3: Daily Pipeline Implementation
 **Goal:** Build the main pipeline that orchestrates data loading
 
-### Story 3.1: Implement Price Data Pipeline
-**As a** data analyst  
-**I want to** automatically load daily price data  
-**So that** I have current market data for analysis
+### Story 3.1: Create ETL Pipeline Framework
+**As a** data engineer  
+**I want to** create a reusable ETL framework  
+**So that** all data loads follow consistent patterns
 
 **Acceptance Criteria:**
-- [ ] Create load_price_data function in daily_pipeline.py
-- [ ] Fetch last 5 days of prices for each symbol
-- [ ] Handle duplicates (upsert logic)
-- [ ] Log successful and failed symbol loads
-- [ ] Test with 10 symbols from config
+- [ ] Create base ETL class with extract, transform, load methods
+- [ ] Implement error handling and retry logic
+- [ ] Add logging and monitoring hooks
+- [ ] Create batch processing capabilities
+- [ ] Test framework with sample data
 
 **Story Points:** 3  
 **Dependencies:** Story 1.3, Story 2.2
 
-### Story 3.2: Implement Company Info Pipeline
+### Story 3.2: Extract Company Data
 **As a** data analyst  
-**I want to** maintain up-to-date company information  
-**So that** I can filter and categorize stocks properly
+**I want to** extract and load company profile data  
+**So that** I can analyze company characteristics
 
 **Acceptance Criteria:**
-- [ ] Create load_company_info function
-- [ ] Implement weekly update logic (Mondays only)
-- [ ] Handle updates to existing companies
-- [ ] Log changes to company info
-- [ ] Test with all configured symbols
+- [ ] Extract company profiles from FMP API
+- [ ] Load data into RAW_COMPANY_PROFILE table
+- [ ] Transform and load into STG_COMPANY_PROFILE
+- [ ] Update DIM_COMPANY in analytics layer
+- [ ] Handle new companies and updates
 
 **Story Points:** 3  
 **Dependencies:** Story 3.1
 
-### Story 3.3: Implement Fundamentals Pipeline
+### Story 3.3: Extract Historical Price Data
 **As a** data analyst  
-**I want to** load quarterly fundamental data  
-**So that** I can calculate financial ratios
+**I want to** load historical price and volume data  
+**So that** I can analyze price movements
 
 **Acceptance Criteria:**
-- [ ] Create load_fundamentals function
-- [ ] Fetch last 4 quarters of data
-- [ ] Implement weekly update logic (Sundays)
-- [ ] Handle fiscal year/quarter mapping
-- [ ] Test data quality for key metrics
+- [ ] Extract historical prices from FMP API
+- [ ] Load data into RAW_HISTORICAL_PRICES table
+- [ ] Transform and load into STG_HISTORICAL_PRICES
+- [ ] Update FACT_DAILY_PRICES in analytics layer
+- [ ] Handle date ranges and incremental updates
 
 **Story Points:** 5  
 **Dependencies:** Story 3.1
 
-### Story 3.4: Create Main Pipeline Orchestrator
+---
+
+## Epic 4: Financial Statement Pipeline
+**Goal:** Load and transform financial statement data
+
+### Story 4.1: Extract Financial Statement Data
+**As a** data analyst  
+**I want to** load income statement, balance sheet, and cash flow data  
+**So that** I can analyze company fundamentals
+
+**Acceptance Criteria:**
+- [ ] Extract financial statements from FMP API
+- [ ] Load into RAW_INCOME_STATEMENT, RAW_BALANCE_SHEET, RAW_CASH_FLOW
+- [ ] Transform and load into staging tables
+- [ ] Update FACT_FINANCIAL_METRICS in analytics layer
+- [ ] Handle quarterly and annual periods
+
+**Story Points:** 5  
+**Dependencies:** Story 3.1
+
+### Story 4.2: Create Staging Layer Transformations
+**As a** data engineer  
+**I want to** transform raw JSON data to structured format  
+**So that** analysts can query data easily
+
+**Acceptance Criteria:**
+- [ ] Create SQL/Python transformations for all staging tables
+- [ ] Handle data type conversions and null values
+- [ ] Implement data quality checks
+- [ ] Create reusable transformation functions
+- [ ] Document transformation logic
+
+**Story Points:** 3  
+**Dependencies:** Stories 3.2, 3.3, 4.1
+
+---
+
+## Epic 5: Analytics and Orchestration
+**Goal:** Build analytics layer and pipeline orchestration
+
+### Story 5.1: Create Main Pipeline Orchestrator
 **As a** operations engineer  
 **I want to** run all data loads from a single script  
 **So that** scheduling and monitoring is simplified
 
 **Acceptance Criteria:**
 - [ ] Create run_daily_update function
-- [ ] Orchestrate all load functions with proper sequencing
+- [ ] Orchestrate all ETL jobs with proper sequencing
 - [ ] Add command line arguments for selective runs
 - [ ] Implement proper exit codes for monitoring
 - [ ] Create --dry-run option for testing
 
-**Story Points:** 2  
-**Dependencies:** Stories 3.1, 3.2, 3.3
-
----
-
-## Epic 4: Metrics Calculation
-**Goal:** Calculate derived metrics and technical indicators
-
-### Story 4.1: Implement Returns Calculation
-**As a** quantitative analyst  
-**I want to** calculate period returns automatically  
-**So that** I can analyze stock performance
-
-**Acceptance Criteria:**
-- [ ] Create SQL for 1d, 5d, 1m, 3m, 6m, 1y returns
-- [ ] Implement in calculate_metrics.py
-- [ ] Handle null values and division by zero
-- [ ] Verify calculations with test data
-- [ ] Schedule to run after price updates
-
 **Story Points:** 3  
-**Dependencies:** Story 3.1
+**Dependencies:** All previous ETL stories
 
-### Story 4.2: Implement Technical Indicators
-**As a** quantitative analyst  
-**I want to** calculate moving averages and volatility  
-**So that** I can identify trading signals
+### Story 5.2: Implement Analytics Layer Updates
+**As a** data analyst  
+**I want to** maintain dimension and fact tables  
+**So that** I can perform efficient analytics queries
 
 **Acceptance Criteria:**
-- [ ] Calculate SMA 20, 50, 200
-- [ ] Calculate 20-day and 60-day volatility
-- [ ] Add volume-based metrics
-- [ ] Store in DAILY_EQUITY_METRICS table
-- [ ] Test calculations against known values
+- [ ] Update DIM_COMPANY with SCD Type 2 logic
+- [ ] Calculate and store financial metrics in fact tables
+- [ ] Implement incremental updates for fact tables
+- [ ] Create data quality checks
+- [ ] Test star schema query performance
 
 **Story Points:** 5  
-**Dependencies:** Story 4.1
-
-### Story 4.3: Implement RSI Calculation
-**As a** quantitative analyst  
-**I want to** calculate RSI (Relative Strength Index)  
-**So that** I can identify overbought/oversold conditions
-
-**Acceptance Criteria:**
-- [ ] Implement 14-day RSI calculation
-- [ ] Handle edge cases (new stocks, insufficient data)
-- [ ] Add to DAILY_EQUITY_METRICS table
-- [ ] Validate against external RSI calculations
-- [ ] Document RSI methodology used
-
-**Story Points:** 3  
-**Dependencies:** Story 4.1
+**Dependencies:** Epic 4 stories
 
 ---
 
-## Epic 5: Monitoring and Operations
+## Epic 6: Monitoring and Operations
 **Goal:** Ensure pipeline reliability and observability
 
-### Story 5.1: Implement Data Freshness Monitoring
+### Story 6.1: Implement Data Freshness Monitoring
 **As a** operations engineer  
 **I want to** monitor data freshness  
 **So that** I'm alerted to pipeline failures
@@ -222,9 +229,9 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - [ ] Return proper exit codes for alerting
 
 **Story Points:** 2  
-**Dependencies:** Story 3.4
+**Dependencies:** Story 5.1
 
-### Story 5.2: Set up Email Alerts
+### Story 6.2: Set up Email Alerts
 **As a** operations engineer  
 **I want to** receive email alerts for failures  
 **So that** I can respond quickly to issues
@@ -237,9 +244,9 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - [ ] Daily success summary option
 
 **Story Points:** 2  
-**Dependencies:** Story 5.1
+**Dependencies:** Story 6.1
 
-### Story 5.3: Create Operational Runbook
+### Story 6.3: Create Operational Runbook
 **As a** operations engineer  
 **I want to** have clear troubleshooting procedures  
 **So that** any team member can resolve issues
@@ -256,10 +263,10 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 
 ---
 
-## Epic 6: Testing and Deployment
+## Epic 7: Testing and Deployment
 **Goal:** Ensure code quality and reliable deployment
 
-### Story 6.1: Create Unit Tests
+### Story 7.1: Create Unit Tests
 **As a** developer  
 **I want to** have comprehensive unit tests  
 **So that** we can safely make changes
@@ -274,7 +281,7 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **Story Points:** 5  
 **Dependencies:** Epics 1-4
 
-### Story 6.2: Create Integration Tests
+### Story 7.2: Create Integration Tests
 **As a** developer  
 **I want to** test the full pipeline end-to-end  
 **So that** we catch integration issues
@@ -287,9 +294,9 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - [ ] Clean up test data
 
 **Story Points:** 3  
-**Dependencies:** Story 6.1
+**Dependencies:** Story 7.2
 
-### Story 6.3: Set up Cron Scheduling
+### Story 7.3: Set up Cron Scheduling
 **As a** operations engineer  
 **I want to** automate pipeline runs  
 **So that** data is updated without manual intervention
@@ -308,26 +315,26 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 
 ## Implementation Plan
 
-### Sprint 1 (Weeks 1-2): Foundation
-- Epic 1: All stories (8 points)
-- Story 2.1: FMP API Client (5 points)
+### Sprint 1 (Weeks 1-2): Foundation ✅ COMPLETED
+- Epic 1: All stories (8 points) ✅
+- Story 2.1: FMP API Client (5 points) ✅
 - **Total: 13 points**
 
-### Sprint 2 (Weeks 3-4): Core Pipeline
+### Sprint 2 (Weeks 3-4): Core ETL Pipeline
 - Story 2.2: Data Transformation (3 points)
-- Epic 3: Stories 3.1-3.4 (13 points)
+- Epic 3: Stories 3.1-3.3 (11 points)
+- **Total: 14 points**
+
+### Sprint 3 (Weeks 5-6): Financial Data & Analytics
+- Epic 4: Stories 4.1-4.2 (8 points)
+- Epic 5: Stories 5.1-5.2 (8 points)
 - **Total: 16 points**
 
-### Sprint 3 (Weeks 5-6): Metrics & Monitoring
-- Epic 4: All stories (11 points)
-- Epic 5: Stories 5.1-5.2 (4 points)
-- **Total: 15 points**
-
-### Sprint 4 (Weeks 7-8): Testing & Deployment
-- Story 5.3: Runbook (3 points)
-- Epic 6: All stories (10 points)
+### Sprint 4 (Weeks 7-8): Operations & Deployment
+- Epic 6: All stories (7 points)
+- Epic 7: All stories (10 points)
 - Buffer for fixes and optimization
-- **Total: 13 points**
+- **Total: 17 points**
 
 ## Definition of Done
 - [ ] Code reviewed by at least one team member
