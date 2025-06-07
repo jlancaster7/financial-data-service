@@ -103,11 +103,11 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** all data loads follow consistent patterns
 
 **Acceptance Criteria:**
-- [ ] Create base ETL class with extract, transform, load methods
-- [ ] Implement error handling and retry logic
-- [ ] Add logging and monitoring hooks
-- [ ] Create batch processing capabilities
-- [ ] Test framework with sample data
+- [x] Create base ETL class with extract, transform, load methods
+- [x] Implement error handling and retry logic
+- [x] Add logging and monitoring hooks
+- [x] Create batch processing capabilities
+- [x] Test framework with sample data
 
 **Story Points:** 3  
 **Dependencies:** Story 1.3, Story 2.2
@@ -321,10 +321,12 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - Story 2.1: FMP API Client (5 points) ✅
 - **Total: 13 points**
 
-### Sprint 2 (Weeks 3-4): Core ETL Pipeline
-- Story 2.2: Data Transformation (3 points)
-- Epic 3: Stories 3.1-3.3 (11 points)
-- **Total: 14 points**
+### Sprint 2 (Weeks 3-4): Core ETL Pipeline 🚧 IN PROGRESS
+- Story 2.2: Data Transformation (3 points) ✅
+- Story 3.1: ETL Pipeline Framework (3 points) ✅
+- ETL Monitoring Infrastructure ✅
+- Stories 3.2-3.3: Company and Price Data (8 points)
+- **Total: 14 points** (6 completed, 8 remaining)
 
 ### Sprint 3 (Weeks 5-6): Financial Data & Analytics
 - Epic 4: Stories 4.1-4.2 (8 points)

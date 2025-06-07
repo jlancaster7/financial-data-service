@@ -85,7 +85,8 @@ financial-data-service/
 │   ├── 01_database_setup.sql
 │   ├── 02_schema_setup.sql
 │   ├── 03_table_definitions.sql
-│   └── 04_populate_date_dimension.sql
+│   ├── 04_populate_date_dimension.sql
+│   └── 05_etl_monitoring_tables.sql
 ├── src/
 │   ├── api/               # API client modules
 │   │   ├── __init__.py
@@ -93,7 +94,11 @@ financial-data-service/
 │   ├── db/                # Database modules
 │   │   ├── __init__.py
 │   │   └── snowflake_connector.py
-│   ├── etl/               # ETL modules (Sprint 2)
+│   ├── etl/               # ETL modules
+│   │   ├── __init__.py
+│   │   ├── base_etl.py    # Abstract base ETL framework
+│   │   ├── sample_etl.py  # Sample implementation
+│   │   └── etl_monitor.py # Monitoring persistence
 │   ├── models/            # Data models (Sprint 2)
 │   ├── utils/             # Utility modules
 │   │   ├── __init__.py
@@ -101,7 +106,9 @@ financial-data-service/
 │   └── __init__.py
 ├── tests/                 # Test files
 │   ├── test_snowflake_connector.py
-│   └── test_fmp_client.py
+│   ├── test_fmp_client.py
+│   ├── test_transformations.py
+│   └── test_etl_framework.py
 ├── docs/                  # Documentation
 │   └── IMPLEMENTATION_STATUS.md
 ├── config/                # Configuration files
@@ -135,10 +142,51 @@ financial-data-service/
 - Comprehensive data quality checks
 - Full test coverage for all transformation logic
 
+### Story 3.1: Create ETL Pipeline Framework ✅
+**Files Created:**
+- `src/etl/base_etl.py` - Abstract base ETL framework:
+  - Extract, Transform, Load methods with retry logic
+  - Batch processing capabilities
+  - Monitoring hooks for observability
+  - Comprehensive error handling and job status tracking
+  - ETLResult dataclass for standardized reporting
+- `src/etl/sample_etl.py` - Sample implementation:
+  - Demonstrates framework usage with company profiles
+  - Shows integration with FMP client and transformer
+- `tests/test_etl_framework.py` - Comprehensive unit tests
+
+**Key Features:**
+- Retry logic with configurable attempts and delays
+- Batch processing to handle large datasets efficiently
+- Pre/post hooks for each ETL phase for monitoring
+- Automatic data quality validation integration
+- Detailed job result tracking and reporting
+- Status tracking (PENDING, RUNNING, SUCCESS, FAILED, PARTIAL)
+
+### ETL Monitoring Infrastructure ✅
+**Files Created:**
+- `sql/05_etl_monitoring_tables.sql` - Snowflake monitoring tables:
+  - ETL_JOB_HISTORY - Tracks all job executions
+  - ETL_JOB_ERRORS - Stores job error details
+  - ETL_JOB_METRICS - Records performance metrics
+  - ETL_DATA_QUALITY_ISSUES - Logs data quality problems
+  - Views for current status and recent errors
+- `src/etl/etl_monitor.py` - ETL monitoring module:
+  - Persists job results to Snowflake
+  - Tracks errors, metrics, and data quality issues
+  - Provides job history querying
+- `scripts/setup_etl_monitoring.py` - Setup script for monitoring tables
+
+**Key Features:**
+- Automatic job result persistence when monitoring is enabled
+- Data quality issue tracking integrated with validation
+- Clustering keys for optimal query performance
+- Comprehensive error and metric tracking
+- Views for easy monitoring and reporting
+
 ## Next Steps (Sprint 2)
-1. Story 3.1: Create ETL Pipeline Framework
-2. Story 3.2: Extract Company Data
-3. Story 3.3: Extract Historical Price Data
+1. Story 3.2: Extract Company Data
+2. Story 3.3: Extract Historical Price Data
 
 ## Testing Strategy
 - Unit tests for individual components
