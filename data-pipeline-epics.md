@@ -97,7 +97,7 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 ## Epic 3: Daily Pipeline Implementation
 **Goal:** Build the main pipeline that orchestrates data loading
 
-### Story 3.1: Create ETL Pipeline Framework
+### Story 3.1: Create ETL Pipeline Framework ✅
 **As a** data engineer  
 **I want to** create a reusable ETL framework  
 **So that** all data loads follow consistent patterns
@@ -108,9 +108,15 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - [x] Add logging and monitoring hooks
 - [x] Create batch processing capabilities
 - [x] Test framework with sample data
+- [x] Implement ETL monitoring tables and persistence
 
 **Story Points:** 3  
 **Dependencies:** Story 1.3, Story 2.2
+
+**Implementation Notes:**
+- Created comprehensive ETL monitoring infrastructure
+- ETL_JOB_HISTORY, ETL_JOB_ERRORS, ETL_JOB_METRICS tables
+- Automatic job result persistence when monitoring enabled
 
 ### Story 3.2: Extract Company Data
 **As a** data analyst  
@@ -148,7 +154,7 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 ## Epic 4: Financial Statement Pipeline
 **Goal:** Load and transform financial statement data
 
-### Story 4.1: Extract Financial Statement Data
+### Story 4.1: Extract Financial Statement Data ✅
 **As a** data analyst  
 **I want to** load income statement, balance sheet, and cash flow data  
 **So that** I can analyze company fundamentals
@@ -157,13 +163,19 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - [x] Extract financial statements from FMP API
 - [x] Load into RAW_INCOME_STATEMENT, RAW_BALANCE_SHEET, RAW_CASH_FLOW
 - [x] Transform and load into staging tables
-- [x] Update FACT_FINANCIAL_METRICS in analytics layer
+- [x] Update FACT_FINANCIALS with raw financial data (split from FACT_FINANCIAL_METRICS)
 - [x] Handle quarterly and annual periods
 - [x] Implement MERGE for staging tables to prevent duplicates
-- [x] Calculate financial ratios (profit margin, ROE, ROA, debt-to-equity)
+- [x] Capture filing_date and accepted_date to prevent look-ahead bias
+- [x] Fix field mappings to capture all available FMP data
 
 **Story Points:** 5  
 **Dependencies:** Story 3.1
+
+**Implementation Notes:**
+- Split FACT_FINANCIAL_METRICS into FACT_FINANCIALS (raw data) and FACT_FINANCIAL_RATIOS (calculated)
+- Added filing date capture for point-in-time analysis
+- Fixed field mappings for operating_expenses, shares_outstanding, current_assets/liabilities, dividends_paid
 
 ### Story 4.2: Create Staging Layer Transformations
 **As a** data engineer  
@@ -206,14 +218,30 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **So that** I can perform efficient analytics queries
 
 **Acceptance Criteria:**
-- [ ] Update DIM_COMPANY with SCD Type 2 logic
-- [ ] Calculate and store financial metrics in fact tables
-- [ ] Implement incremental updates for fact tables
-- [ ] Create data quality checks
+- [x] Update DIM_COMPANY with SCD Type 2 logic (implemented in Story 3.2)
+- [ ] Calculate and store pure financial ratios in FACT_FINANCIAL_RATIOS (quarterly/annual)
+- [ ] Create separate FACT_MARKET_METRICS table for market-based metrics (daily)
+- [x] Implement incremental updates for fact tables (MERGE logic)
+- [x] Create data quality checks (DataQualityValidator)
 - [ ] Test star schema query performance
 
 **Story Points:** 5  
 **Dependencies:** Epic 4 stories
+
+**Partial Implementation Notes:**
+- DIM_COMPANY SCD Type 2 already implemented
+- Data quality validation framework in place
+- FACT_FINANCIAL_RATIOS table created but calculation logic pending
+
+**IMPORTANT ARCHITECTURAL DECISION:**
+- **DO NOT** store market-based metrics in FACT_FINANCIAL_RATIOS
+- Market-based metrics (P/E, P/B, EV/EBITDA, etc.) change daily with stock price
+- Pure financial ratios (ROE, ROA, Debt-to-Equity, etc.) are quarterly/annual
+- Create separate FACT_MARKET_METRICS table for daily market-based calculations
+- This separation ensures:
+  - Proper grain alignment (quarterly vs daily)
+  - Efficient storage (avoid duplicating quarterly data daily)
+  - Clear distinction between fundamental and market metrics
 
 ---
 
@@ -270,20 +298,25 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 ## Epic 7: Testing and Deployment
 **Goal:** Ensure code quality and reliable deployment
 
-### Story 7.1: Create Unit Tests
+### Story 7.1: Create Unit Tests ✅
 **As a** developer  
 **I want to** have comprehensive unit tests  
 **So that** we can safely make changes
 
 **Acceptance Criteria:**
-- [ ] Test FMP client methods
-- [ ] Test data transformations
-- [ ] Test Snowflake operations (with mocks)
-- [ ] Achieve 80% code coverage
-- [ ] Set up pytest configuration
+- [x] Test FMP client methods
+- [x] Test data transformations
+- [x] Test Snowflake operations (with mocks)
+- [x] Achieve 80% code coverage
+- [x] Set up pytest configuration
 
 **Story Points:** 5  
 **Dependencies:** Epics 1-4
+
+**Implementation Notes:**
+- Comprehensive test suite with 69 tests
+- Tests for all ETL pipelines (company, price, financial statements)
+- Mock testing for API calls and database operations
 
 ### Story 7.2: Create Integration Tests
 **As a** developer  
@@ -339,6 +372,12 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - Epic 5: Stories 5.1-5.2 (8 points)
 - **Total: 21 points**
 
+**Completed in Sprint 3:**
+- ✅ Historical price ETL with duplicate prevention (MERGE)
+- ✅ Financial statement ETL for all three statement types
+- ✅ Filing date capture implementation
+- ✅ Field mapping fixes for complete data capture
+
 ### Sprint 4 (Weeks 7-8): Operations & Deployment
 - Epic 6: All stories (7 points)
 - Epic 7: All stories (10 points)
@@ -355,12 +394,15 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 
 ## Technical Debt & Future Enhancements
 1. Add more sophisticated error recovery
-2. Implement data quality checks
+2. ~~Implement data quality checks~~ ✅ (DataQualityValidator implemented)
 3. Add support for more asset classes (bonds, options)
 4. Create data lineage tracking
 5. Build Streamlit dashboard for monitoring
-6. Implement incremental loading for historical data
+6. ~~Implement incremental loading for historical data~~ ✅ (MERGE statements implemented)
 7. Add support for real-time data feeds
+8. Implement financial ratio calculations for FACT_FINANCIAL_RATIOS
+9. Add more comprehensive ETL monitoring dashboards
+10. Optimize VARIANT column handling for better performance
 
 ## Risks & Mitigations
 1. **Risk:** FMP API changes or downtime  
