@@ -3,6 +3,23 @@
 ## Project Overview
 Build a simplified data pipeline to populate Snowflake with equity market data from Financial Modeling Prep (FMP) API.
 
+## Overall Progress Summary
+- **Sprint 1**: ✅ COMPLETED (13/13 points - 100%)
+- **Sprint 2**: ✅ COMPLETED (14/14 points - 100%)
+- **Sprint 3**: 🚧 IN PROGRESS (13/21 points - 62%)
+- **Sprint 4**: 📋 TODO (0/17 points - 0%)
+- **Total Progress**: 40/65 points (62% complete)
+
+## What's Next
+1. **Story 4.2**: Create Staging Layer Transformations (3 points)
+   - Most transformations already implemented in ETL pipelines
+   - Focus on SQL views and additional data quality rules
+   
+2. **Story 5.2**: Implement Analytics Layer Updates (5 points)
+   - Calculate financial ratios for FACT_FINANCIAL_RATIOS
+   - Create FACT_MARKET_METRICS for daily market-based metrics
+   - Ensure proper grain alignment (quarterly vs daily)
+
 ## Epic 1: Core Infrastructure Setup
 **Goal:** Establish the foundational infrastructure and database schema
 
@@ -177,7 +194,7 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - Added filing date capture for point-in-time analysis
 - Fixed field mappings for operating_expenses, shares_outstanding, current_assets/liabilities, dividends_paid
 
-### Story 4.2: Create Staging Layer Transformations
+### Story 4.2: Create Staging Layer Transformations 📋 TODO
 **As a** data engineer  
 **I want to** transform raw JSON data to structured format  
 **So that** analysts can query data easily
@@ -191,6 +208,11 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 
 **Story Points:** 3  
 **Dependencies:** Stories 3.2, 3.3, 4.1
+
+**Note:** Most transformations are already implemented in the ETL pipelines. This story may focus on:
+- Creating SQL views for complex transformations
+- Adding more sophisticated data quality rules
+- Building transformation documentation
 
 ---
 
@@ -373,11 +395,12 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - VARIANT Column Handling Implementation ✅
 - **Total: 14 points** (All completed except Story 3.3 moved to Sprint 3)
 
-### Sprint 3 (Weeks 5-6): Financial Data & Analytics 🚧 IN PROGRESS
+### Sprint 3 (Weeks 5-6): Financial Data & Analytics 🚧 IN PROGRESS (13/21 points - 62% complete)
 - Story 3.3: Extract Historical Price Data (5 points) ✅
 - Story 4.1: Extract Financial Statement Data (5 points) ✅
-- Story 4.2: Create Staging Layer Transformations (3 points) 🚧 NEXT
-- Epic 5: Stories 5.1-5.2 (8 points)
+- Story 5.1: Create Main Pipeline Orchestrator (3 points) ✅
+- Story 4.2: Create Staging Layer Transformations (3 points) 📋 TODO
+- Story 5.2: Implement Analytics Layer Updates (5 points) 📋 TODO
 - **Total: 21 points**
 
 **Completed in Sprint 3:**
@@ -385,6 +408,9 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - ✅ Financial statement ETL for all three statement types
 - ✅ Filing date capture implementation
 - ✅ Field mapping fixes for complete data capture
+- ✅ Main pipeline orchestrator with CLI interface
+- ✅ Standardized ETL interfaces across all pipelines
+- ✅ Comprehensive documentation (CLAUDE.md, updated README)
 
 ### Sprint 4 (Weeks 7-8): Operations & Deployment
 - Epic 6: All stories (7 points)
