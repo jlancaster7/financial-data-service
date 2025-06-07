@@ -340,10 +340,60 @@ financial-data-service/
 - No more NULL columns for fields that have data in the API
 - Better data completeness for financial analysis
 
+### Story 5.1: Create Main Pipeline Orchestrator ✅
+**Files Created:**
+- `scripts/run_daily_pipeline.py` - Main orchestrator script:
+  - PipelineOrchestrator class that manages all ETL pipelines
+  - Runs pipelines in proper dependency order (Company → Price → Financial)
+  - Command line interface with extensive options
+  - Dry run mode for testing without database changes
+  - Proper exit codes for monitoring integration
+
+**Files Modified:**
+- `src/etl/company_etl.py` - Refactored to use consistent Config-based initialization
+- `scripts/run_company_etl.py` - Updated to use new CompanyETL interface
+- `tests/test_company_etl.py` - Updated all tests for new interface
+
+**Key Features:**
+- **Consistent ETL Interface**: All ETL classes now accept a Config object
+  - CompanyETL was refactored from taking individual parameters to match others
+  - Extract methods now accept runtime parameters (symbols, dates, etc.)
+- **Command Line Options**:
+  - `--symbols`: Process specific symbols
+  - `--sp500`: Process all S&P 500 constituents
+  - `--skip-company`, `--skip-price`, `--skip-financial`: Skip individual pipelines
+  - `--skip-analytics`: Skip analytics layer updates
+  - `--dry-run`: Show what would be executed without running
+  - `--days-back`, `--from-date`, `--to-date`: Control price date ranges
+  - `--period`, `--limit`: Control financial statement extraction
+- **Exit Codes**:
+  - 0: All pipelines completed successfully
+  - 1: Some pipelines completed with errors (partial success)
+  - 2: All pipelines failed
+- **Comprehensive Logging**:
+  - Clear pipeline execution flow
+  - Summary statistics for each pipeline
+  - Total execution time and record counts
+
+**Usage Examples:**
+```bash
+# Run all pipelines for specific symbols
+python scripts/run_daily_pipeline.py --symbols AAPL MSFT GOOGL
+
+# Run for S&P 500 with dry run
+python scripts/run_daily_pipeline.py --sp500 --dry-run
+
+# Skip financial pipeline, get 7 days of prices
+python scripts/run_daily_pipeline.py --skip-financial --days-back 7 --symbols AAPL
+
+# Run only price updates for date range
+python scripts/run_daily_pipeline.py --skip-company --skip-financial \
+  --from-date 2024-01-01 --to-date 2024-12-31 --symbols AAPL MSFT
+```
+
 ## Next Steps (Sprint 3)
 1. Story 4.2: Create Staging Layer Transformations
-2. Story 5.1: Create Main Pipeline Orchestrator
-3. Story 5.2: Implement Analytics Layer Updates
+2. Story 5.2: Implement Analytics Layer Updates
 
 ## Testing Strategy
 - Unit tests for individual components

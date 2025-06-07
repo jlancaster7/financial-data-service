@@ -47,9 +47,43 @@ financial-data-service/
 
 ## Usage
 
-```python
-# Run the ETL pipeline
-python -m src.main --symbols AAPL,MSFT,GOOGL --start-date 2023-01-01
+### Daily Pipeline Orchestrator
+
+The main way to run the ETL pipeline is through the orchestrator script:
+
+```bash
+# Run all pipelines for specific symbols
+python scripts/run_daily_pipeline.py --symbols AAPL MSFT GOOGL
+
+# Run for all S&P 500 companies
+python scripts/run_daily_pipeline.py --sp500
+
+# Dry run mode (no database changes)
+python scripts/run_daily_pipeline.py --dry-run --symbols AAPL
+
+# Skip specific pipelines
+python scripts/run_daily_pipeline.py --skip-financial --symbols AAPL
+
+# Custom date range for historical prices
+python scripts/run_daily_pipeline.py --from-date 2024-01-01 --to-date 2024-12-31 --symbols AAPL
+
+# See all options
+python scripts/run_daily_pipeline.py --help
+```
+
+### Individual ETL Scripts
+
+You can also run individual ETL pipelines:
+
+```bash
+# Company profiles
+python scripts/run_company_etl.py --symbols AAPL MSFT
+
+# Historical prices  
+python scripts/run_price_etl.py --symbols AAPL --days-back 30
+
+# Financial statements
+python scripts/run_financial_etl.py --symbols AAPL --period annual --limit 5
 ```
 
 ## Development

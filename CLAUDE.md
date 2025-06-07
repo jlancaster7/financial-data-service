@@ -1,136 +1,159 @@
-# CLAUDE.md
+# Claude Code Guidance for Financial Data Service
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This document provides guidance for future Claude Code instances working on this financial data service project.
 
 ## Project Overview
-
-This is a financial data pipeline that extracts equity data from the Financial Modeling Prep (FMP) API and loads it into Snowflake using a three-layer architecture (RAW → STAGING → ANALYTICS).
+This is a financial data pipeline that extracts market data from Financial Modeling Prep (FMP) API and loads it into Snowflake using a three-layer architecture (Raw → Staging → Analytics).
 
 ## Common Commands
 
-### Development Setup
+### Daily Pipeline Operations
 ```bash
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Run full pipeline for specific symbols
+python scripts/run_daily_pipeline.py --symbols AAPL MSFT GOOGL
 
-# Install dependencies
-pip install -r requirements.txt
+# Run for all S&P 500 companies
+python scripts/run_daily_pipeline.py --sp500
 
-# Set up environment
-cp .env.example .env
-# Edit .env with Snowflake and FMP API credentials
+# Dry run to test without database changes
+python scripts/run_daily_pipeline.py --dry-run --symbols AAPL
+
+# Skip specific pipelines
+python scripts/run_daily_pipeline.py --skip-financial --symbols AAPL
+
+# Run with specific date range for prices
+python scripts/run_daily_pipeline.py --from-date 2024-01-01 --to-date 2024-12-31 --symbols AAPL
+```
+
+### Individual ETL Scripts
+```bash
+# Run company ETL only
+python scripts/run_company_etl.py --symbols AAPL MSFT
+
+# Run price ETL with date range
+python scripts/run_price_etl.py --symbols AAPL --days-back 30
+
+# Run financial statement ETL
+python scripts/run_financial_etl.py --symbols AAPL --period annual --limit 5
 ```
 
 ### Testing
 ```bash
 # Run all tests
-pytest
+python -m pytest tests/ -v
 
 # Run specific test file
-pytest tests/test_fmp_client.py
+python -m pytest tests/test_company_etl.py -v
 
 # Run with coverage
-pytest --cov=src
-
-# Run specific test
-pytest tests/test_fmp_client.py::TestFMPClient::test_get_company_profile_success
+python -m pytest tests/ --cov=src --cov-report=html
 ```
 
-### Code Quality
+### Database Operations
 ```bash
-# Format code
-black .
+# Check data in Snowflake
+python scripts/check_snowflake_data.py
 
-# Lint code
-flake8
-
-# Type checking
-mypy src/
+# Recreate financial tables (BE CAREFUL - drops tables!)
+python scripts/recreate_financial_tables.py
 ```
 
-### Running ETL Pipelines
-```bash
-# Company profile ETL
-python scripts/run_company_etl.py --symbols AAPL MSFT GOOGL
+## Architecture Overview
 
-# Historical price ETL
-python scripts/run_price_etl.py --symbols AAPL --days-back 30
+### Three-Layer Architecture
+1. **RAW Layer** (RAW_DATA schema)
+   - Stores raw JSON from APIs as VARIANT columns
+   - Immutable historical record
+   - Tables: RAW_COMPANY_PROFILE, RAW_HISTORICAL_PRICES, RAW_INCOME_STATEMENT, etc.
 
-# Financial statement ETL
-python scripts/run_financial_etl.py --symbols AAPL MSFT --period annual --limit 5
-
-# Run for all S&P 500 (omit --symbols)
-python scripts/run_company_etl.py
-```
-
-### Snowflake Setup
-```bash
-# Run SQL scripts in order
-sql/01_database_setup.sql
-sql/02_schema_setup.sql
-sql/03_table_definitions.sql
-sql/04_populate_date_dimension.sql
-sql/05_etl_monitoring_tables.sql
-```
-
-## Architecture
-
-### Three-Layer Data Architecture
-
-1. **RAW Layer** (`RAW_DATA` schema)
-   - Stores raw JSON responses from FMP API as VARIANT columns
-   - Preserves original API responses for audit trail
-   - Tables: `RAW_COMPANY_PROFILE`, `RAW_HISTORICAL_PRICES`, `RAW_INCOME_STATEMENT`, etc.
-
-2. **STAGING Layer** (`STAGING` schema)
-   - Structured tables with parsed and validated data
+2. **STAGING Layer** (STAGING schema)
+   - Structured tables with typed columns
    - Uses MERGE statements to prevent duplicates
-   - Tables: `STG_COMPANY_PROFILE`, `STG_HISTORICAL_PRICES`, `STG_INCOME_STATEMENT`, etc.
+   - Tables: STG_COMPANY_PROFILE, STG_HISTORICAL_PRICES, STG_INCOME_STATEMENT, etc.
 
-3. **ANALYTICS Layer** (`ANALYTICS` schema)
-   - Star schema with dimension and fact tables
-   - `DIM_COMPANY` - SCD Type 2 for company changes
-   - `DIM_DATE` - Pre-populated date dimension (2020-2030)
-   - `FACT_DAILY_PRICES`, `FACT_FINANCIALS`, `FACT_FINANCIAL_RATIOS`
+3. **ANALYTICS Layer** (ANALYTICS schema)
+   - Star schema for analysis
+   - Dimensions: DIM_COMPANY, DIM_DATE
+   - Facts: FACT_DAILY_PRICES, FACT_FINANCIALS, FACT_FINANCIAL_RATIOS (pending)
 
 ### ETL Framework
+All ETL pipelines inherit from `BaseETL` and follow this pattern:
+1. **Extract**: Get data from FMP API
+2. **Transform**: Convert to raw and staging formats
+3. **Load**: Insert into Snowflake tables
 
-The project uses an abstract ETL framework (`src/etl/base_etl.py`) with:
-- Extract, Transform, Load methods with retry logic
-- Batch processing capabilities
-- Monitoring hooks for observability
-- Data quality validation integration
-- Standardized error handling and result tracking
+Key classes:
+- `CompanyETL`: Company profiles
+- `HistoricalPriceETL`: Daily stock prices
+- `FinancialStatementETL`: Income statements, balance sheets, cash flows
 
-Each ETL pipeline extends this base class and implements domain-specific logic.
+### Pipeline Orchestration
+The `PipelineOrchestrator` in `scripts/run_daily_pipeline.py` runs all ETLs in dependency order:
+1. Company profiles (needed for DIM_COMPANY)
+2. Historical prices
+3. Financial statements
 
-### Key Technical Decisions
+## Key Technical Decisions
 
-1. **VARIANT Column Handling**: Snowflake VARIANT columns require special handling. The bulk_insert method detects VARIANT columns and applies PARSE_JSON automatically.
+### VARIANT Column Handling
+- Raw layer uses VARIANT columns to store JSON
+- Custom `DateTimeEncoder` handles datetime serialization
+- Bulk insert detects VARIANT columns and applies PARSE_JSON
 
-2. **Duplicate Prevention**: All staging tables use MERGE statements with appropriate merge keys (e.g., symbol + date) to ensure idempotent ETL runs.
+### Duplicate Prevention
+- Staging tables use MERGE statements
+- Unique keys: (symbol, date) for prices, (symbol, fiscal_date, period) for financials
+- Ensures idempotent pipeline runs
 
-3. **Filing Date Capture**: Financial statements capture both `filing_date` and `accepted_date` to prevent look-ahead bias in quantitative analysis.
+### Filing Date Capture
+- Critical for preventing look-ahead bias
+- Captures both `filing_date` and `accepted_date` from FMP API
+- Enables proper point-in-time analysis
 
-4. **FMP API Integration**: 
-   - Uses `/stable/` endpoints with query parameters
-   - Rate limiting (300 calls/minute)
-   - See `docs/FMP_FIELD_MAPPINGS.md` for detailed field mappings
+### Consistent ETL Interface
+- All ETL classes take a `Config` object
+- Runtime parameters (symbols, dates) passed to extract methods
+- Enables flexible orchestration
 
-### Important Files
+## Common Issues and Solutions
 
-- `src/db/snowflake_connector.py` - Snowflake connection handling with context managers
-- `src/api/fmp_client.py` - FMP API client with rate limiting
-- `src/etl/base_etl.py` - Abstract ETL framework
-- `src/models/fmp_models.py` - Data models with field mappings
-- `src/transformations/fmp_transformer.py` - Data transformation logic
-- `sql/03_table_definitions.sql` - Complete database schema
+### Issue: NULL columns in fact tables
+**Solution**: Check FMP API field mappings in `src/models/fmp_models.py`. Common mismatches:
+- `operatingExpenses` vs `operating_expenses`
+- `weightedAverageShsOut` vs `shares_outstanding`
+- `commonDividendsPaid` vs `dividends_paid`
 
-### Monitoring
+### Issue: Duplicate data in staging
+**Solution**: Use MERGE statements with proper unique keys. See `SnowflakeConnector.merge()` method.
 
-ETL job monitoring is available when `enable_monitoring=true` in config:
-- Job history tracked in `ETL_JOB_HISTORY`
-- Errors logged to `ETL_JOB_ERRORS`
-- Data quality issues in `ETL_DATA_QUALITY_ISSUES`
-- Performance metrics in `ETL_JOB_METRICS`
+### Issue: Certificate errors with Snowflake
+**Solution**: Using single-row inserts for VARIANT columns. Future optimization could use staging tables.
+
+### Issue: Rate limiting from FMP API
+**Solution**: FMPClient has built-in rate limiting (300 calls/minute). Batch endpoints available for company profiles.
+
+## Environment Variables
+Required in `.env` file:
+```
+SNOWFLAKE_ACCOUNT=
+SNOWFLAKE_USER=
+SNOWFLAKE_PASSWORD=
+SNOWFLAKE_WAREHOUSE=
+SNOWFLAKE_DATABASE=EQUITY_DATA
+SNOWFLAKE_SCHEMA=PUBLIC
+SNOWFLAKE_ROLE=EQUITY_DATA_LOADER
+
+FMP_API_KEY=
+FMP_BASE_URL=https://financialmodelingprep.com/api/v3
+
+LOG_LEVEL=INFO
+BATCH_SIZE=1000
+ENABLE_MONITORING=true
+```
+
+## Future Enhancements
+1. Implement FACT_FINANCIAL_RATIOS calculations
+2. Create FACT_MARKET_METRICS for daily market-based ratios
+3. Add more sophisticated error recovery
+4. Implement data quality monitoring dashboard
+5. Add support for real-time data feeds
