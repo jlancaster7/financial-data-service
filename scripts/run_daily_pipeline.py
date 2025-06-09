@@ -21,6 +21,9 @@ from src.db.snowflake_connector import SnowflakeConnector
 from src.etl.company_etl import CompanyETL
 from src.etl.historical_price_etl import HistoricalPriceETL
 from src.etl.financial_statement_etl import FinancialStatementETL
+from src.etl.financial_ratio_etl import FinancialRatioETL
+from src.etl.ttm_calculation_etl import TTMCalculationETL
+from src.etl.market_metrics_etl import MarketMetricsETL
 from src.etl.base_etl import ETLStatus
 
 
@@ -222,6 +225,112 @@ class PipelineOrchestrator:
             self.results['financial'] = {'status': 'failed', 'error': str(e)}
             return False
     
+    def run_ratio_etl(self, symbols: List[str], args) -> bool:
+        """Run financial ratio ETL"""
+        logger.info(f"{'[DRY RUN] ' if self.dry_run else ''}Starting Financial Ratio ETL...")
+        
+        if self.dry_run:
+            logger.info("Would calculate financial ratios from FACT_FINANCIALS")
+            self.results['ratio'] = {'status': 'dry_run'}
+            return True
+        
+        try:
+            etl = FinancialRatioETL(self.config)
+            
+            # Run the ETL
+            result = etl.run(
+                symbols=symbols if not args.all_symbols else None,
+                fiscal_start_date=args.from_date,
+                fiscal_end_date=args.to_date
+            )
+            
+            self.results['ratio'] = result
+            
+            success = result.get('status') == 'success'
+            if success:
+                logger.info(f"✓ Ratio ETL completed: {result.get('records_loaded', 0)} ratios calculated")
+            else:
+                logger.error(f"✗ Ratio ETL failed: {result.get('error', 'Unknown error')}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Ratio ETL failed with exception: {e}")
+            self.results['ratio'] = {'status': 'failed', 'error': str(e)}
+            return False
+    
+    def run_ttm_calculation_etl(self, symbols: List[str], args) -> bool:
+        """Run TTM calculation ETL"""
+        logger.info(f"{'[DRY RUN] ' if self.dry_run else ''}Starting TTM Calculation ETL...")
+        
+        if self.dry_run:
+            logger.info("Would calculate TTM financial metrics")
+            self.results['ttm_calculation'] = {'status': 'dry_run'}
+            return True
+        
+        try:
+            etl = TTMCalculationETL(self.config)
+            
+            # Run the ETL
+            result = etl.run(symbols=symbols if not args.all_symbols else None)
+            
+            self.results['ttm_calculation'] = result
+            
+            success = result.get('status') == 'success'
+            if success:
+                logger.info(f"✓ TTM Calculation ETL completed: {result.get('records_loaded', 0)} TTM records created")
+            else:
+                logger.error(f"✗ TTM Calculation ETL failed: {result.get('error', 'Unknown error')}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"TTM Calculation ETL failed with exception: {e}")
+            self.results['ttm_calculation'] = {'status': 'failed', 'error': str(e)}
+            return False
+    
+    def run_market_metrics_etl(self, symbols: List[str], args) -> bool:
+        """Run market metrics ETL"""
+        logger.info(f"{'[DRY RUN] ' if self.dry_run else ''}Starting Market Metrics ETL...")
+        
+        if self.dry_run:
+            logger.info("Would calculate daily market metrics")
+            self.results['market_metrics'] = {'status': 'dry_run'}
+            return True
+        
+        try:
+            etl = MarketMetricsETL(self.config)
+            
+            # Determine date range for market metrics
+            if args.from_date:
+                start_date = args.from_date
+            else:
+                start_date = (datetime.now() - timedelta(days=args.days_back)).strftime('%Y-%m-%d')
+            
+            end_date = args.to_date if args.to_date else datetime.now().strftime('%Y-%m-%d')
+            
+            # Run the ETL
+            result = etl.run(
+                symbols=symbols if not args.all_symbols else None,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            self.results['market_metrics'] = result
+            
+            success = result.get('status') == 'success'
+            if success:
+                logger.info(f"✓ Market Metrics ETL completed: {result.get('records_loaded', 0)} metrics calculated")
+            else:
+                logger.error(f"✗ Market Metrics ETL failed: {result.get('error', 'Unknown error')}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Market Metrics ETL failed with exception: {e}")
+            self.results['market_metrics'] = {'status': 'failed', 'error': str(e)}
+            return False
+    
     def run_daily_update(self, args) -> int:
         """
         Run all ETL pipelines in the correct sequence
@@ -256,6 +365,16 @@ class PipelineOrchestrator:
         
         if not args.skip_financial:
             pipelines.append(('financial', self.run_financial_etl))
+        
+        # TTM calculation should run after financial data is loaded
+        if not args.skip_financial and not args.skip_ttm:
+            pipelines.append(('ttm_calculation', self.run_ttm_calculation_etl))
+        
+        if not args.skip_ratio:
+            pipelines.append(('ratio', self.run_ratio_etl))
+        
+        if not args.skip_market_metrics:
+            pipelines.append(('market_metrics', self.run_market_metrics_etl))
         
         # Execute pipelines
         for name, pipeline_func in pipelines:
@@ -319,6 +438,12 @@ Examples:
   # Skip specific pipelines
   python run_daily_pipeline.py --skip-financial --symbols AAPL
   
+  # Run with ratio and market metrics calculation
+  python run_daily_pipeline.py --symbols AAPL MSFT
+  
+  # Only run ratio and metrics calculation for all symbols
+  python run_daily_pipeline.py --skip-company --skip-price --skip-financial --all-symbols
+  
   # Dry run to see what would be executed
   python run_daily_pipeline.py --dry-run --sp500
         """
@@ -352,6 +477,26 @@ Examples:
         "--skip-financial",
         action="store_true",
         help="Skip financial statement ETL"
+    )
+    parser.add_argument(
+        "--skip-ratio",
+        action="store_true",
+        help="Skip financial ratio calculation ETL"
+    )
+    parser.add_argument(
+        "--skip-ttm",
+        action="store_true",
+        help="Skip TTM (trailing twelve month) calculation ETL"
+    )
+    parser.add_argument(
+        "--skip-market-metrics",
+        action="store_true",
+        help="Skip market metrics calculation ETL"
+    )
+    parser.add_argument(
+        "--all-symbols",
+        action="store_true",
+        help="Process all symbols in database (for ratio/metrics ETL)"
     )
     
     # Common options

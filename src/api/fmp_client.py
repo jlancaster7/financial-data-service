@@ -129,12 +129,12 @@ class FMPClient:
             'limit': limit
         }
         
-        # Handle period parameter - docs show Q1,Q2,Q3,Q4,FY format
+        # Handle period parameter
         if period.lower() == 'annual':
             params['period'] = 'FY'
         elif period.lower() == 'quarterly':
-            # Don't specify period to get all quarters
-            pass
+            # Use 'quarter' to get recent quarterly data
+            params['period'] = 'quarter'
         else:
             params['period'] = period
         
@@ -162,7 +162,7 @@ class FMPClient:
         if period.lower() == 'annual':
             params['period'] = 'FY'
         elif period.lower() == 'quarterly':
-            pass
+            params['period'] = 'quarter'
         else:
             params['period'] = period
         
@@ -190,7 +190,7 @@ class FMPClient:
         if period.lower() == 'annual':
             params['period'] = 'FY'
         elif period.lower() == 'quarterly':
-            pass
+            params['period'] = 'quarter'
         else:
             params['period'] = period
         

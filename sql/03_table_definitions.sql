@@ -253,11 +253,7 @@ CREATE TABLE IF NOT EXISTS FACT_FINANCIAL_RATIOS (
     asset_turnover NUMBER(10,4),
     -- Per Share Metrics
     book_value_per_share NUMBER(10,4),
-    -- Price-based ratios (to be calculated daily with price data)
-    pe_ratio NUMBER(10,4),
-    pb_ratio NUMBER(10,4),
-    ps_ratio NUMBER(10,4),
-    ev_to_ebitda NUMBER(10,4),
+    revenue_per_share NUMBER(10,4),
     -- Metadata
     created_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     FOREIGN KEY (financial_key) REFERENCES FACT_FINANCIALS(financial_key),
@@ -265,9 +261,91 @@ CREATE TABLE IF NOT EXISTS FACT_FINANCIAL_RATIOS (
     FOREIGN KEY (calculation_date_key) REFERENCES DIM_DATE(date_key)
 );
 
+-- Fact table for daily market metrics (combines price and financial data)
+CREATE TABLE IF NOT EXISTS FACT_MARKET_METRICS (
+    market_metric_key NUMBER AUTOINCREMENT PRIMARY KEY,
+    company_key NUMBER NOT NULL,
+    date_key NUMBER NOT NULL,
+    financial_key NUMBER NOT NULL,
+    -- Price data (from FACT_DAILY_PRICES)
+    close_price NUMBER(10,2),
+    market_cap NUMBER(20,2),
+    enterprise_value NUMBER(20,2),
+    -- Market-based valuation ratios
+    pe_ratio NUMBER(10,4),          -- Price to Earnings
+    pe_ratio_ttm NUMBER(10,4),      -- Price to Earnings (Trailing Twelve Months)
+    pb_ratio NUMBER(10,4),          -- Price to Book
+    ps_ratio NUMBER(10,4),          -- Price to Sales
+    ps_ratio_ttm NUMBER(10,4),      -- Price to Sales (TTM)
+    peg_ratio NUMBER(10,4),         -- Price/Earnings to Growth
+    ev_to_revenue NUMBER(10,4),     -- Enterprise Value to Revenue
+    ev_to_revenue_ttm NUMBER(10,4), -- Enterprise Value to Revenue (TTM)
+    ev_to_ebitda NUMBER(10,4),      -- Enterprise Value to EBITDA
+    ev_to_ebit NUMBER(10,4),        -- Enterprise Value to EBIT
+    -- Dividend metrics
+    dividend_yield NUMBER(10,4),
+    payout_ratio NUMBER(10,4),
+    -- Metadata
+    fiscal_period VARCHAR(10),       -- Q1, Q2, Q3, Q4, or ANNUAL
+    is_ttm BOOLEAN DEFAULT FALSE,    -- Whether metrics use TTM calculations
+    created_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    FOREIGN KEY (company_key) REFERENCES DIM_COMPANY(company_key),
+    FOREIGN KEY (date_key) REFERENCES DIM_DATE(date_key),
+    FOREIGN KEY (financial_key) REFERENCES FACT_FINANCIALS(financial_key)
+);
+
+-- Fact table for trailing twelve month (TTM) financial calculations
+CREATE TABLE IF NOT EXISTS FACT_FINANCIALS_TTM (
+    ttm_key NUMBER AUTOINCREMENT PRIMARY KEY,
+    company_key NUMBER NOT NULL,
+    calculation_date DATE NOT NULL,
+    accepted_date TIMESTAMP_NTZ NOT NULL,  -- When the TTM data became available
+    
+    -- Quarters included in calculation
+    quarters_included NUMBER NOT NULL,  -- Should be 4 for complete TTM
+    oldest_quarter_date DATE NOT NULL,
+    newest_quarter_date DATE NOT NULL,
+    
+    -- TTM Flow Metrics (SUM of 4 quarters)
+    ttm_revenue NUMBER(20,2),
+    ttm_cost_of_revenue NUMBER(20,2),
+    ttm_gross_profit NUMBER(20,2),
+    ttm_operating_expenses NUMBER(20,2),
+    ttm_operating_income NUMBER(20,2),
+    ttm_net_income NUMBER(20,2),
+    ttm_eps NUMBER(10,4),
+    ttm_eps_diluted NUMBER(10,4),
+    ttm_operating_cash_flow NUMBER(20,2),
+    ttm_investing_cash_flow NUMBER(20,2),
+    ttm_financing_cash_flow NUMBER(20,2),
+    ttm_free_cash_flow NUMBER(20,2),
+    ttm_capital_expenditures NUMBER(20,2),
+    ttm_dividends_paid NUMBER(20,2),
+    
+    -- Point-in-time Stock Metrics (from most recent quarter)
+    latest_shares_outstanding NUMBER(20),
+    latest_total_assets NUMBER(20,2),
+    latest_current_assets NUMBER(20,2),
+    latest_total_liabilities NUMBER(20,2),
+    latest_current_liabilities NUMBER(20,2),
+    latest_total_equity NUMBER(20,2),
+    latest_cash_and_equivalents NUMBER(20,2),
+    latest_total_debt NUMBER(20,2),
+    latest_net_debt NUMBER(20,2),
+    
+    -- Metadata
+    created_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+    
+    -- Constraints
+    FOREIGN KEY (company_key) REFERENCES DIM_COMPANY(company_key),
+    UNIQUE (company_key, calculation_date)  -- One TTM calculation per company per date
+);
+
 -- Add clustering keys for performance optimization in Snowflake
 ALTER TABLE FACT_FINANCIALS CLUSTER BY (company_key, fiscal_date_key);
 ALTER TABLE FACT_FINANCIAL_RATIOS CLUSTER BY (company_key, calculation_date_key);
+ALTER TABLE FACT_MARKET_METRICS CLUSTER BY (company_key, date_key);
+ALTER TABLE FACT_FINANCIALS_TTM CLUSTER BY (company_key, calculation_date);
 
 -- Grant table privileges
 GRANT SELECT ON ALL TABLES IN SCHEMA RAW_DATA TO ROLE EQUITY_DATA_READER;

@@ -6,19 +6,18 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 ## Overall Progress Summary
 - **Sprint 1**: ✅ COMPLETED (13/13 points - 100%)
 - **Sprint 2**: ✅ COMPLETED (14/14 points - 100%)
-- **Sprint 3**: 🚧 IN PROGRESS (13/21 points - 62%)
-- **Sprint 4**: 📋 TODO (0/17 points - 0%)
-- **Total Progress**: 40/65 points (62% complete)
+- **Sprint 3**: 🚧 IN PROGRESS (18/21 points - 86%)
+- **Sprint 4**: 🚧 IN PROGRESS (5/8 points - 63%)
+- **Sprint 5**: 📋 TODO (0/17 points - 0%)
+- **Total Progress**: 50/73 points (68% complete)
 
 ## What's Next
-1. **Story 4.2**: Create Staging Layer Transformations (3 points)
-   - Most transformations already implemented in ETL pipelines
-   - Focus on SQL views and additional data quality rules
+1. ~~**Story 5.3**: Implement TTM Financial Calculations (5 points)~~ ✅ COMPLETED
    
-2. **Story 5.2**: Implement Analytics Layer Updates (5 points)
-   - Calculate financial ratios for FACT_FINANCIAL_RATIOS
-   - Create FACT_MARKET_METRICS for daily market-based metrics
-   - Ensure proper grain alignment (quarterly vs daily)
+2. **Story 5.4**: Refactor Market Metrics to Use Pre-calculated Values (3 points)
+   - Add revenue_per_share to FACT_FINANCIAL_RATIOS
+   - Update market metrics to use official EPS values
+   - Simplify complex TTM query logic by using FACT_FINANCIALS_TTM
 
 ## Epic 1: Core Infrastructure Setup
 **Goal:** Establish the foundational infrastructure and database schema
@@ -242,15 +241,15 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - Dry run mode for testing without database changes
 - Comprehensive logging and summary reporting
 
-### Story 5.2: Implement Analytics Layer Updates
+### Story 5.2: Implement Analytics Layer Updates 🚧 IN PROGRESS
 **As a** data analyst  
 **I want to** maintain dimension and fact tables  
 **So that** I can perform efficient analytics queries
 
 **Acceptance Criteria:**
 - [x] Update DIM_COMPANY with SCD Type 2 logic (implemented in Story 3.2)
-- [ ] Calculate and store pure financial ratios in FACT_FINANCIAL_RATIOS (quarterly/annual)
-- [ ] Create separate FACT_MARKET_METRICS table for market-based metrics (daily)
+- [x] Calculate and store pure financial ratios in FACT_FINANCIAL_RATIOS (quarterly/annual)
+- [x] Create separate FACT_MARKET_METRICS table for market-based metrics (daily)
 - [x] Implement incremental updates for fact tables (MERGE logic)
 - [x] Create data quality checks (DataQualityValidator)
 - [ ] Test star schema query performance
@@ -258,10 +257,11 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 **Story Points:** 5  
 **Dependencies:** Epic 4 stories
 
-**Partial Implementation Notes:**
+**Implementation Notes:**
 - DIM_COMPANY SCD Type 2 already implemented
 - Data quality validation framework in place
-- FACT_FINANCIAL_RATIOS table created but calculation logic pending
+- FACT_FINANCIAL_RATIOS ETL created with financial ratio calculations
+- FACT_MARKET_METRICS ETL created (needs refactoring for TTM)
 
 **IMPORTANT ARCHITECTURAL DECISION:**
 - **DO NOT** store market-based metrics in FACT_FINANCIAL_RATIOS
@@ -272,6 +272,54 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
   - Proper grain alignment (quarterly vs daily)
   - Efficient storage (avoid duplicating quarterly data daily)
   - Clear distinction between fundamental and market metrics
+
+### Story 5.3: Implement TTM Financial Calculations ✅ COMPLETED
+**As a** data engineer  
+**I want to** pre-calculate trailing twelve-month financial metrics  
+**So that** market metrics can be calculated efficiently and accurately
+
+**Acceptance Criteria:**
+- [x] Design and create FACT_FINANCIALS_TTM table
+- [x] Store TTM sums for flow metrics (revenue, net income, operating cash flow, etc.)
+- [x] Store point-in-time values for stock metrics (shares outstanding, total equity, etc.)
+- [x] Track which 4 quarters were used in calculation
+- [x] Include accepted_date to enable point-in-time analysis
+- [x] Create TTM calculation ETL that runs after financial data loads
+- [x] Handle cases where fewer than 4 quarters are available
+
+**Story Points:** 5  
+**Dependencies:** Story 4.1
+
+**Implementation Notes (Completed 2025-06-09):**
+- Created FACT_FINANCIALS_TTM table with comprehensive schema
+- Implemented TTMCalculationETL class with proper point-in-time logic
+- Created run_ttm_calculation_etl.py standalone script
+- Integrated into daily pipeline with --skip-ttm option
+- Successfully loaded 10 TTM records (5 AAPL, 5 MSFT)
+- Verified calculations match external sources (AAPL TTM revenue: $400.37B)
+- All integrity tests pass: 4 quarters used, no duplicates, valid date spans
+
+### Story 5.4: Refactor Market Metrics to Use Pre-calculated Values 📋 TODO
+**As a** data engineer  
+**I want to** simplify market metrics calculations  
+**So that** they are more maintainable and performant
+
+**Acceptance Criteria:**
+- [ ] Update FACT_FINANCIAL_RATIOS to include revenue_per_share (quarterly and TTM)
+- [ ] Refactor market metrics ETL to use eps_diluted from FACT_FINANCIALS
+- [ ] Use pre-calculated TTM EPS from FACT_FINANCIALS_TTM
+- [ ] Use revenue_per_share from FACT_FINANCIAL_RATIOS for P/S calculations
+- [ ] Simplify market metrics query to join with TTM table
+- [ ] Remove complex CTE logic for on-the-fly TTM calculations
+- [ ] Ensure proper point-in-time logic using accepted_date
+
+**Story Points:** 3  
+**Dependencies:** Story 5.3
+
+**Implementation Notes:**
+- Use official reported eps_diluted values
+- Revenue per share calculated as: revenue / shares_outstanding
+- TTM revenue per share: TTM revenue / latest shares outstanding
 
 ---
 
@@ -395,12 +443,12 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - VARIANT Column Handling Implementation ✅
 - **Total: 14 points** (All completed except Story 3.3 moved to Sprint 3)
 
-### Sprint 3 (Weeks 5-6): Financial Data & Analytics 🚧 IN PROGRESS (13/21 points - 62% complete)
+### Sprint 3 (Weeks 5-6): Financial Data & Analytics 🚧 IN PROGRESS (18/21 points - 86% complete)
 - Story 3.3: Extract Historical Price Data (5 points) ✅
 - Story 4.1: Extract Financial Statement Data (5 points) ✅
 - Story 5.1: Create Main Pipeline Orchestrator (3 points) ✅
 - Story 4.2: Create Staging Layer Transformations (3 points) 📋 TODO
-- Story 5.2: Implement Analytics Layer Updates (5 points) 📋 TODO
+- Story 5.2: Implement Analytics Layer Updates (5 points) ✅
 - **Total: 21 points**
 
 **Completed in Sprint 3:**
@@ -411,8 +459,15 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - ✅ Main pipeline orchestrator with CLI interface
 - ✅ Standardized ETL interfaces across all pipelines
 - ✅ Comprehensive documentation (CLAUDE.md, updated README)
+- ✅ FACT_FINANCIAL_RATIOS ETL implementation
+- ✅ FACT_MARKET_METRICS ETL implementation (needs TTM refactor)
 
-### Sprint 4 (Weeks 7-8): Operations & Deployment
+### Sprint 4 (Weeks 7-8): TTM Calculations & Refactoring 🚧 IN PROGRESS (5/8 points - 63% complete)
+- Story 5.3: Implement TTM Financial Calculations (5 points) ✅ COMPLETED
+- Story 5.4: Refactor Market Metrics to Use Pre-calculated Values (3 points) 📋 TODO
+- **Total: 8 points**
+
+### Sprint 5 (Weeks 9-10): Operations & Deployment 📋 TODO
 - Epic 6: All stories (7 points)
 - Epic 7: All stories (10 points)
 - Buffer for fixes and optimization

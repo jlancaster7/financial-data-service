@@ -34,7 +34,16 @@ python scripts/run_company_etl.py --symbols AAPL MSFT
 python scripts/run_price_etl.py --symbols AAPL --days-back 30
 
 # Run financial statement ETL
-python scripts/run_financial_etl.py --symbols AAPL --period annual --limit 5
+python scripts/run_financial_etl.py --symbols AAPL --period quarterly --limit 8
+
+# Run TTM calculation ETL
+python scripts/run_ttm_calculation_etl.py --symbols AAPL MSFT
+
+# Run financial ratio ETL
+python scripts/run_financial_ratio_etl.py --symbols AAPL
+
+# Run market metrics ETL
+python scripts/run_market_metrics_etl.py --symbols AAPL --start-date 2024-01-01
 ```
 
 ### Testing
@@ -74,7 +83,7 @@ python scripts/recreate_financial_tables.py
 3. **ANALYTICS Layer** (ANALYTICS schema)
    - Star schema for analysis
    - Dimensions: DIM_COMPANY, DIM_DATE
-   - Facts: FACT_DAILY_PRICES, FACT_FINANCIALS, FACT_FINANCIAL_RATIOS (pending)
+   - Facts: FACT_DAILY_PRICES, FACT_FINANCIALS, FACT_FINANCIAL_RATIOS, FACT_MARKET_METRICS, FACT_FINANCIALS_TTM
 
 ### ETL Framework
 All ETL pipelines inherit from `BaseETL` and follow this pattern:
@@ -86,12 +95,18 @@ Key classes:
 - `CompanyETL`: Company profiles
 - `HistoricalPriceETL`: Daily stock prices
 - `FinancialStatementETL`: Income statements, balance sheets, cash flows
+- `FinancialRatioETL`: Financial ratios (ROE, ROA, margins, etc.)
+- `MarketMetricsETL`: Market-based metrics (P/E, P/B, EV/EBITDA, etc.)
+- `TTMCalculationETL`: Pre-calculated trailing twelve month metrics
 
 ### Pipeline Orchestration
 The `PipelineOrchestrator` in `scripts/run_daily_pipeline.py` runs all ETLs in dependency order:
 1. Company profiles (needed for DIM_COMPANY)
 2. Historical prices
 3. Financial statements
+4. TTM calculations (after financial data)
+5. Financial ratios
+6. Market metrics
 
 ## Key Technical Decisions
 
@@ -151,9 +166,47 @@ BATCH_SIZE=1000
 ENABLE_MONITORING=true
 ```
 
+## Recent Updates (2025-06-09)
+
+### Story 5.3: TTM Financial Calculations ✅ COMPLETED
+Successfully implemented pre-calculated TTM (Trailing Twelve Month) financial metrics:
+
+1. **FACT_FINANCIALS_TTM Table**:
+   - Stores pre-calculated TTM metrics for efficient querying
+   - Flow metrics (summed): revenue, net income, EPS, cash flows, etc.
+   - Stock metrics (point-in-time): shares outstanding, assets, equity, etc.
+   - Tracks calculation_date, accepted_date, and quarters used
+
+2. **TTMCalculationETL Implementation**:
+   - Finds all dates where 4 quarters of data are available
+   - Respects point-in-time logic using accepted_date
+   - Prevents duplicate calculations with unique constraint
+   - Integrated into daily pipeline after financial data ETL
+
+3. **Verification**:
+   - Loaded 10 TTM records (5 AAPL, 5 MSFT)
+   - AAPL TTM Revenue (2025-05-02): $400.37B ✓ (verified against external source)
+   - All integrity tests pass: exactly 4 quarters used, no duplicates
+
+## Important Notes
+
+### TTM Calculation Logic
+- Uses the 4 most recent quarters available on each calculation date
+- Looks back ~15 months to find quarters (handles reporting delays)
+- Flow metrics: SUM of 4 quarters (revenue, net income, cash flows)
+- Stock metrics: Most recent quarter's value (shares outstanding, assets)
+
+### Point-in-Time Analysis
+- All calculations respect accepted_date to prevent look-ahead bias
+- Market metrics should join on price date <= TTM calculation date
+- Ensures historical backtesting accuracy
+
 ## Future Enhancements
-1. Implement FACT_FINANCIAL_RATIOS calculations
-2. Create FACT_MARKET_METRICS for daily market-based ratios
-3. Add more sophisticated error recovery
-4. Implement data quality monitoring dashboard
-5. Add support for real-time data feeds
+1. ~~Implement FACT_FINANCIAL_RATIOS calculations~~ ✅ COMPLETED
+2. ~~Create FACT_MARKET_METRICS for daily market-based ratios~~ ✅ COMPLETED
+3. ~~Implement FACT_FINANCIALS_TTM for pre-calculated metrics~~ ✅ COMPLETED
+4. Refactor FACT_MARKET_METRICS to use pre-calculated TTM values (Story 5.4)
+5. Add revenue_per_share to FACT_FINANCIAL_RATIOS
+6. Add more sophisticated error recovery
+7. Implement data quality monitoring dashboard
+8. Add support for real-time data feeds
