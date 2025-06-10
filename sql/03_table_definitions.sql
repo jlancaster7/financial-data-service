@@ -287,7 +287,6 @@ CREATE TABLE IF NOT EXISTS FACT_MARKET_METRICS (
     payout_ratio NUMBER(10,4),
     -- Metadata
     fiscal_period VARCHAR(10),       -- Q1, Q2, Q3, Q4, or ANNUAL
-    is_ttm BOOLEAN DEFAULT FALSE,    -- Whether metrics use TTM calculations
     created_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
     FOREIGN KEY (company_key) REFERENCES DIM_COMPANY(company_key),
     FOREIGN KEY (date_key) REFERENCES DIM_DATE(date_key),

@@ -141,6 +141,11 @@ class PipelineOrchestrator:
             records_loaded = etl.load(transformed_data)
             etl.result.records_loaded = records_loaded
             
+            # Update analytics layer if requested
+            if not args.skip_analytics and records_loaded > 0:
+                logger.info("Updating FACT_DAILY_PRICES...")
+                etl.update_fact_table(symbols, from_date)
+            
             # Set status
             if etl.result.errors:
                 etl.result.status = ETLStatus.PARTIAL
@@ -196,6 +201,11 @@ class PipelineOrchestrator:
             # Load data
             records_loaded = etl.load(transformed_data)
             etl.result.records_loaded = records_loaded
+            
+            # Update analytics layer if requested
+            if not args.skip_analytics and records_loaded > 0:
+                logger.info("Updating FACT_FINANCIALS...")
+                etl.update_fact_table(symbols)
             
             # Set status
             if etl.result.errors:

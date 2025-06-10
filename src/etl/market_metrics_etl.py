@@ -328,8 +328,8 @@ class MarketMetricsETL(BaseETL):
                 ttm_dividends = float(record.get('TTM_DIVIDENDS_PAID', 0) or 0)
                 
                 # Dividend Yield (using TTM dividends)
-                if close_price > 0 and ttm_dividends > 0 and shares_outstanding > 0:
-                    dividends_per_share = abs(ttm_dividends) / shares_outstanding  # dividends are usually negative
+                if close_price > 0 and ttm_dividends < 0 and shares_outstanding > 0:  # dividends are negative cash flows
+                    dividends_per_share = abs(ttm_dividends) / shares_outstanding
                     metric_record['dividend_yield'] = round((dividends_per_share / close_price) * 100, 2)
                 else:
                     metric_record['dividend_yield'] = None
@@ -343,9 +343,6 @@ class MarketMetricsETL(BaseETL):
                 
                 # PEG Ratio would require growth rates - skip for now
                 metric_record['peg_ratio'] = None
-                
-                # Mark if using TTM data
-                metric_record['is_ttm'] = True if record.get('TTM_KEY') else False
                 
                 metrics_data.append(metric_record)
                 
