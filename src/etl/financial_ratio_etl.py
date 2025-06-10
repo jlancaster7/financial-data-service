@@ -217,10 +217,19 @@ class FinancialRatioETL(BaseETL):
                 
                 # Per Share Metrics
                 shares_outstanding = record.get('SHARES_OUTSTANDING', 0) or 0
-                if shares_outstanding > 0 and total_equity > 0:
-                    ratio_record['book_value_per_share'] = round(total_equity / shares_outstanding, 2)
+                if shares_outstanding > 0:
+                    if total_equity > 0:
+                        ratio_record['book_value_per_share'] = round(total_equity / shares_outstanding, 2)
+                    else:
+                        ratio_record['book_value_per_share'] = None
+                    
+                    if revenue > 0:
+                        ratio_record['revenue_per_share'] = round(revenue / shares_outstanding, 2)
+                    else:
+                        ratio_record['revenue_per_share'] = None
                 else:
                     ratio_record['book_value_per_share'] = None
+                    ratio_record['revenue_per_share'] = None
                 
                 ratios_data.append(ratio_record)
                 

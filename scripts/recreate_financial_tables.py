@@ -235,6 +235,7 @@ def main():
                 asset_turnover NUMBER(10,4),
                 -- Per Share Metrics
                 book_value_per_share NUMBER(10,4),
+                revenue_per_share NUMBER(10,4),
                 -- Metadata
                 created_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
                 FOREIGN KEY (financial_key) REFERENCES FACT_FINANCIALS(financial_key),

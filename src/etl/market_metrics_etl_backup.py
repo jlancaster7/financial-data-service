@@ -51,110 +51,160 @@ class MarketMetricsETL(BaseETL):
         """
         logger.info("Extracting data for market metrics calculation")
         
-        # Simplified query using pre-calculated TTM values
+        # Query to get daily prices with the most recent financial data
+        # This query properly considers accepted_date for point-in-time TTM calculations
         query = """
-        WITH daily_prices AS (
-            -- Get daily price data
-            SELECT 
+        WITH price_dates AS (
+            -- Get all price dates we need to process
+            SELECT DISTINCT
                 dp.price_key,
                 dp.company_key,
                 dp.date_key,
-                dd.date AS price_date,
+                pd.date AS price_date,
                 dc.symbol,
                 dc.sector,
                 dp.close_price,
                 dp.volume
             FROM ANALYTICS.FACT_DAILY_PRICES dp
-            JOIN ANALYTICS.DIM_DATE dd ON dp.date_key = dd.date_key
+            JOIN ANALYTICS.DIM_DATE pd ON dp.date_key = pd.date_key
             JOIN ANALYTICS.DIM_COMPANY dc ON dp.company_key = dc.company_key
             WHERE 1=1
         ),
-        latest_quarterly AS (
-            -- Get most recent quarterly financial data as of each price date
-            SELECT DISTINCT
+        available_financials AS (
+            -- Get financials available at each price date (using accepted_date)
+            SELECT 
                 p.price_key,
                 p.company_key,
                 p.date_key,
                 p.price_date,
-                FIRST_VALUE(f.financial_key) OVER (
-                    PARTITION BY p.price_key
-                    ORDER BY f.accepted_date DESC
-                ) as financial_key
-            FROM daily_prices p
-            JOIN ANALYTICS.FACT_FINANCIALS f
-                ON p.company_key = f.company_key
-                AND f.accepted_date <= p.price_date
-                AND f.period_type IN ('Q1', 'Q2', 'Q3', 'Q4')
+                p.symbol,
+                p.sector,
+                p.close_price,
+                p.volume,
+                ff.financial_key,
+                ff.fiscal_date_key,
+                ff.filing_date_key,
+                ff.accepted_date,
+                ff.period_type,
+                ff.revenue,
+                ff.net_income,
+                ff.total_equity,
+                ff.total_assets,
+                ff.total_debt,
+                ff.shares_outstanding,
+                ff.operating_income,
+                ff.operating_cash_flow,
+                ff.dividends_paid,
+                fd.date AS fiscal_date,
+                -- Row number to identify the 4 most recent quarters available at price date
+                ROW_NUMBER() OVER (
+                    PARTITION BY p.price_key, ff.period_type 
+                    ORDER BY ff.fiscal_date_key DESC
+                ) as quarterly_rank,
+                -- Row number to identify most recent annual available at price date
+                ROW_NUMBER() OVER (
+                    PARTITION BY p.price_key 
+                    ORDER BY CASE WHEN ff.period_type = 'FY' THEN ff.fiscal_date_key END DESC NULLS LAST
+                ) as annual_rank
+            FROM price_dates p
+            LEFT JOIN ANALYTICS.FACT_FINANCIALS ff 
+                ON p.company_key = ff.company_key
+                AND ff.accepted_date <= p.price_date  -- Only use financials available at price date
+            JOIN ANALYTICS.DIM_DATE fd ON ff.fiscal_date_key = fd.date_key
         ),
-        latest_ttm AS (
-            -- Get most recent TTM calculation as of each price date
-            SELECT DISTINCT
-                p.price_key,
-                p.company_key,
-                p.date_key,
-                p.price_date,
-                FIRST_VALUE(t.ttm_key) OVER (
-                    PARTITION BY p.price_key
-                    ORDER BY t.accepted_date DESC
-                ) as ttm_key
-            FROM daily_prices p
-            JOIN ANALYTICS.FACT_FINANCIALS_TTM t
-                ON p.company_key = t.company_key
-                AND t.accepted_date <= p.price_date
+        latest_annual AS (
+            -- Get the most recent annual filing available at each price date
+            SELECT * 
+            FROM available_financials 
+            WHERE period_type = 'FY' 
+            AND annual_rank = 1
+        ),
+        ttm_quarters AS (
+            -- Get the 4 most recent quarters available at each price date
+            SELECT 
+                price_key,
+                company_key,
+                date_key,
+                price_date,
+                fiscal_date_key,
+                accepted_date,
+                period_type,
+                revenue,
+                net_income,
+                operating_income,
+                operating_cash_flow,
+                dividends_paid,
+                total_equity,
+                total_assets,
+                total_debt,
+                shares_outstanding,
+                quarterly_rank
+            FROM available_financials 
+            WHERE period_type IN ('Q1', 'Q2', 'Q3', 'Q4')
+            AND quarterly_rank <= 4
+        ),
+        ttm_financials AS (
+            -- Calculate TTM metrics from the 4 most recent quarters
+            SELECT 
+                price_key,
+                company_key,
+                date_key,
+                price_date,
+                COUNT(*) as quarters_available,
+                MAX(accepted_date) as latest_ttm_accepted_date,
+                SUM(revenue) as ttm_revenue,
+                SUM(net_income) as ttm_net_income,
+                SUM(operating_income) as ttm_operating_income,
+                SUM(operating_cash_flow) as ttm_operating_cash_flow,
+                SUM(dividends_paid) as ttm_dividends_paid,
+                -- For balance sheet items, use the most recent quarter's values (quarterly_rank = 1)
+                MAX(CASE WHEN quarterly_rank = 1 THEN total_equity END) as latest_total_equity,
+                MAX(CASE WHEN quarterly_rank = 1 THEN total_assets END) as latest_total_assets,
+                MAX(CASE WHEN quarterly_rank = 1 THEN total_debt END) as latest_total_debt,
+                MAX(CASE WHEN quarterly_rank = 1 THEN shares_outstanding END) as latest_shares_outstanding
+            FROM ttm_quarters
+            GROUP BY price_key, company_key, date_key, price_date
+            HAVING COUNT(*) = 4  -- Only calculate TTM if we have all 4 quarters
         )
         SELECT DISTINCT
-            p.price_key,
-            p.company_key,
-            p.date_key,
-            p.price_date,
-            p.symbol,
-            p.sector,
+            pd.price_key,
+            pd.company_key,
+            pd.date_key,
+            pd.price_date,
+            pd.symbol,
+            pd.sector,
             -- Price data
-            p.close_price,
-            p.volume,
-            -- Quarterly financial data
-            lq.financial_key,
-            f.period_type,
-            f.accepted_date as quarterly_accepted_date,
-            f.eps_diluted as quarterly_eps_diluted,
-            f.total_equity,
-            f.total_assets,
-            f.total_debt,
-            f.cash_and_equivalents,
-            f.net_debt,
-            f.shares_outstanding as quarterly_shares_outstanding,
-            f.operating_income as quarterly_operating_income,
-            f.dividends_paid as quarterly_dividends_paid,
-            -- Financial ratios
-            fr.revenue_per_share as quarterly_revenue_per_share,
-            fr.book_value_per_share,
+            pd.close_price,
+            pd.volume,
+            -- Latest annual financial data
+            la.financial_key,
+            la.period_type,
+            la.revenue as annual_revenue,
+            la.net_income as annual_net_income,
+            la.total_equity,
+            la.total_assets,
+            la.total_debt,
+            la.shares_outstanding,
+            la.operating_income as annual_operating_income,
+            la.dividends_paid as annual_dividends_paid,
+            la.accepted_date as annual_accepted_date,
             -- TTM financial data
-            lt.ttm_key,
-            t.accepted_date as ttm_accepted_date,
-            t.ttm_revenue,
-            t.ttm_net_income,
-            t.ttm_eps_diluted,
-            t.ttm_operating_income,
-            t.ttm_operating_cash_flow,
-            t.ttm_dividends_paid,
-            t.latest_shares_outstanding as ttm_shares_outstanding,
-            t.latest_total_equity as ttm_total_equity,
-            t.latest_total_assets as ttm_total_assets,
-            t.latest_total_debt as ttm_total_debt,
-            t.latest_cash_and_equivalents as ttm_cash_and_equivalents,
-            t.latest_net_debt as ttm_net_debt,
-            t.quarters_included
-        FROM daily_prices p
-        LEFT JOIN latest_quarterly lq 
-            ON p.price_key = lq.price_key
-        LEFT JOIN ANALYTICS.FACT_FINANCIALS f 
-            ON lq.financial_key = f.financial_key
-        LEFT JOIN ANALYTICS.FACT_FINANCIAL_RATIOS fr
-            ON lq.financial_key = fr.financial_key
-        LEFT JOIN latest_ttm lt 
-            ON p.price_key = lt.price_key
-        LEFT JOIN ANALYTICS.FACT_FINANCIALS_TTM t 
-            ON lt.ttm_key = t.ttm_key
+            ttm.ttm_revenue,
+            ttm.ttm_net_income,
+            ttm.ttm_operating_income,
+            ttm.ttm_operating_cash_flow,
+            ttm.ttm_dividends_paid,
+            ttm.latest_shares_outstanding as ttm_shares_outstanding,
+            ttm.latest_total_equity as ttm_total_equity,
+            ttm.latest_total_assets as ttm_total_assets,
+            ttm.latest_total_debt as ttm_total_debt,
+            ttm.latest_ttm_accepted_date,
+            ttm.quarters_available
+        FROM price_dates pd
+        LEFT JOIN latest_annual la 
+            ON pd.price_key = la.price_key
+        LEFT JOIN ttm_financials ttm 
+            ON pd.price_key = ttm.price_key
         WHERE 1=1
         """
         
@@ -163,16 +213,16 @@ class MarketMetricsETL(BaseETL):
         # Add symbol filter if provided
         if symbols:
             placeholders = ','.join(['%s' for _ in symbols])
-            query += f" AND p.symbol IN ({placeholders})"
+            query += f" AND pd.symbol IN ({placeholders})"
             params.extend(symbols)
         
         # Add date filters if provided
         if start_date:
-            query += " AND p.price_date >= %s"
+            query += " AND pd.price_date >= %s"
             params.append(start_date)
         
         if end_date:
-            query += " AND p.price_date <= %s"
+            query += " AND pd.price_date <= %s"
             params.append(end_date)
         
         # Only process records that don't already have metrics calculated
@@ -180,15 +230,15 @@ class MarketMetricsETL(BaseETL):
         AND NOT EXISTS (
             SELECT 1 
             FROM ANALYTICS.FACT_MARKET_METRICS mm
-            WHERE mm.company_key = p.company_key
-            AND mm.date_key = p.date_key
+            WHERE mm.company_key = pd.company_key
+            AND mm.date_key = pd.date_key
         )
         """
         
-        # Only include records where we have financial data (either quarterly or TTM)
-        query += " AND (lq.financial_key IS NOT NULL OR lt.ttm_key IS NOT NULL)"
+        # Only include records where we have financial data (either annual or TTM)
+        query += " AND (la.financial_key IS NOT NULL OR ttm.quarters_available = 4)"
         
-        query += " ORDER BY p.symbol, p.price_date"
+        query += " ORDER BY pd.symbol, pd.price_date"
         
         try:
             records = self.snowflake.fetch_all(query, tuple(params) if params else None)
@@ -198,9 +248,9 @@ class MarketMetricsETL(BaseETL):
             if records and len(records) > 0:
                 sample = records[0]
                 logger.debug(f"Sample record - Symbol: {sample.get('SYMBOL')}, Date: {sample.get('PRICE_DATE')}, "
-                           f"Quarterly data: {sample.get('FINANCIAL_KEY') is not None}, "
-                           f"TTM data: {sample.get('TTM_KEY') is not None}, "
-                           f"Quarters included: {sample.get('QUARTERS_INCLUDED', 0)}")
+                           f"Annual data: {sample.get('ANNUAL_REVENUE') is not None}, "
+                           f"TTM data: {sample.get('TTM_REVENUE') is not None}, "
+                           f"Quarters available: {sample.get('QUARTERS_AVAILABLE', 0)}")
             
             # Store metadata
             self.result.metadata['records_extracted'] = len(records)
@@ -239,68 +289,81 @@ class MarketMetricsETL(BaseETL):
                 
                 # Calculate market cap and enterprise value
                 close_price = float(record.get('CLOSE_PRICE', 0) or 0)
-                # Prefer TTM shares outstanding for consistency
-                shares_outstanding = float(record.get('TTM_SHARES_OUTSTANDING', 0) or record.get('QUARTERLY_SHARES_OUTSTANDING', 0) or 0)
+                # Prefer annual shares outstanding, fall back to TTM average
+                shares_outstanding = float(record.get('SHARES_OUTSTANDING', 0) or record.get('TTM_SHARES_OUTSTANDING', 0) or 0)
                 
                 if close_price > 0 and shares_outstanding > 0:
                     market_cap = close_price * shares_outstanding
                     metric_record['market_cap'] = round(market_cap, 2)
                     
                     # Enterprise Value = Market Cap + Total Debt - Cash
+                    # Use TTM total debt if available, otherwise annual
                     total_debt = float(record.get('TTM_TOTAL_DEBT', 0) or record.get('TOTAL_DEBT', 0) or 0)
-                    cash = float(record.get('TTM_CASH_AND_EQUIVALENTS', 0) or record.get('CASH_AND_EQUIVALENTS', 0) or 0)
-                    enterprise_value = market_cap + total_debt - cash
+                    # Note: We don't have cash in the current query, would need to add
+                    enterprise_value = market_cap + total_debt
                     metric_record['enterprise_value'] = round(enterprise_value, 2)
                 else:
                     metric_record['market_cap'] = None
                     metric_record['enterprise_value'] = None
                     
-                # P/E Ratio (Price to Earnings) - Use official EPS values
-                quarterly_eps = float(record.get('QUARTERLY_EPS_DILUTED', 0) or 0)
-                ttm_eps = float(record.get('TTM_EPS_DILUTED', 0) or 0)
+                # P/E Ratio (Price to Earnings)
+                annual_net_income = float(record.get('ANNUAL_NET_INCOME', 0) or 0)
+                ttm_net_income = float(record.get('TTM_NET_INCOME', 0) or 0)
                 
-                # Quarterly P/E
-                if quarterly_eps > 0:
-                    metric_record['pe_ratio'] = round(close_price / quarterly_eps, 2)
+                if shares_outstanding > 0:
+                    # Annual P/E
+                    if annual_net_income > 0:
+                        annual_eps = annual_net_income / shares_outstanding
+                        metric_record['pe_ratio'] = round(close_price / annual_eps, 2)
+                    else:
+                        metric_record['pe_ratio'] = None
+                    
+                    # TTM P/E
+                    if ttm_net_income > 0:
+                        ttm_eps = ttm_net_income / shares_outstanding
+                        metric_record['pe_ratio_ttm'] = round(close_price / ttm_eps, 2)
+                    else:
+                        metric_record['pe_ratio_ttm'] = None
                 else:
                     metric_record['pe_ratio'] = None
-                
-                # TTM P/E
-                if ttm_eps > 0:
-                    metric_record['pe_ratio_ttm'] = round(close_price / ttm_eps, 2)
-                else:
                     metric_record['pe_ratio_ttm'] = None
                 
                 # P/B Ratio (Price to Book)
-                book_value_per_share = float(record.get('BOOK_VALUE_PER_SHARE', 0) or 0)
-                if book_value_per_share > 0:
+                # Use TTM total equity if available, otherwise annual
+                total_equity = float(record.get('TTM_TOTAL_EQUITY', 0) or record.get('TOTAL_EQUITY', 0) or 0)
+                if total_equity > 0 and shares_outstanding > 0:
+                    book_value_per_share = total_equity / shares_outstanding
                     metric_record['pb_ratio'] = round(close_price / book_value_per_share, 2)
                 else:
                     metric_record['pb_ratio'] = None
                 
-                # P/S Ratio (Price to Sales) - Use pre-calculated revenue_per_share
-                quarterly_revenue_per_share = float(record.get('QUARTERLY_REVENUE_PER_SHARE', 0) or 0)
+                # P/S Ratio (Price to Sales)
+                annual_revenue = float(record.get('ANNUAL_REVENUE', 0) or 0)
+                ttm_revenue = float(record.get('TTM_REVENUE', 0) or 0)
                 
-                # Quarterly P/S
-                if quarterly_revenue_per_share > 0:
-                    metric_record['ps_ratio'] = round(close_price / quarterly_revenue_per_share, 2)
+                if shares_outstanding > 0:
+                    # Annual P/S
+                    if annual_revenue > 0:
+                        revenue_per_share = annual_revenue / shares_outstanding
+                        metric_record['ps_ratio'] = round(close_price / revenue_per_share, 2)
+                    else:
+                        metric_record['ps_ratio'] = None
+                    
+                    # TTM P/S
+                    if ttm_revenue > 0:
+                        ttm_revenue_per_share = ttm_revenue / shares_outstanding
+                        metric_record['ps_ratio_ttm'] = round(close_price / ttm_revenue_per_share, 2)
+                    else:
+                        metric_record['ps_ratio_ttm'] = None
                 else:
                     metric_record['ps_ratio'] = None
-                
-                # TTM P/S
-                ttm_revenue = float(record.get('TTM_REVENUE', 0) or 0)
-                if ttm_revenue > 0 and shares_outstanding > 0:
-                    ttm_revenue_per_share = ttm_revenue / shares_outstanding
-                    metric_record['ps_ratio_ttm'] = round(close_price / ttm_revenue_per_share, 2)
-                else:
                     metric_record['ps_ratio_ttm'] = None
                 
                 # EV/Revenue ratios
                 if metric_record.get('enterprise_value') and metric_record['enterprise_value'] > 0:
-                    # Quarterly EV/Revenue
-                    if quarterly_revenue_per_share > 0 and shares_outstanding > 0:
-                        quarterly_revenue = quarterly_revenue_per_share * shares_outstanding
-                        metric_record['ev_to_revenue'] = round(metric_record['enterprise_value'] / quarterly_revenue, 2)
+                    # Annual EV/Revenue
+                    if annual_revenue > 0:
+                        metric_record['ev_to_revenue'] = round(metric_record['enterprise_value'] / annual_revenue, 2)
                     else:
                         metric_record['ev_to_revenue'] = None
                     
@@ -311,9 +374,9 @@ class MarketMetricsETL(BaseETL):
                         metric_record['ev_to_revenue_ttm'] = None
                     
                     # EV/EBITDA (using operating income as proxy)
-                    ttm_operating_income = float(record.get('TTM_OPERATING_INCOME', 0) or 0)
-                    if ttm_operating_income > 0:
-                        metric_record['ev_to_ebitda'] = round(metric_record['enterprise_value'] / ttm_operating_income, 2)
+                    annual_operating_income = float(record.get('ANNUAL_OPERATING_INCOME', 0) or 0)
+                    if annual_operating_income > 0:
+                        metric_record['ev_to_ebitda'] = round(metric_record['enterprise_value'] / annual_operating_income, 2)
                         metric_record['ev_to_ebit'] = metric_record['ev_to_ebitda']  # Same since we don't have D&A
                     else:
                         metric_record['ev_to_ebitda'] = None
@@ -325,6 +388,7 @@ class MarketMetricsETL(BaseETL):
                     metric_record['ev_to_ebit'] = None
                 
                 # Dividend metrics
+                annual_dividends = float(record.get('ANNUAL_DIVIDENDS_PAID', 0) or 0)
                 ttm_dividends = float(record.get('TTM_DIVIDENDS_PAID', 0) or 0)
                 
                 # Dividend Yield (using TTM dividends)
@@ -335,7 +399,6 @@ class MarketMetricsETL(BaseETL):
                     metric_record['dividend_yield'] = None
                 
                 # Payout Ratio
-                ttm_net_income = float(record.get('TTM_NET_INCOME', 0) or 0)
                 if ttm_net_income > 0 and ttm_dividends < 0:  # dividends are negative cash flow
                     metric_record['payout_ratio'] = round((abs(ttm_dividends) / ttm_net_income) * 100, 2)
                 else:
@@ -345,7 +408,12 @@ class MarketMetricsETL(BaseETL):
                 metric_record['peg_ratio'] = None
                 
                 # Mark if using TTM data
-                metric_record['is_ttm'] = True if record.get('TTM_KEY') else False
+                metric_record['is_ttm'] = True if ttm_revenue else False
+                
+                # Add metadata fields
+                metric_record['annual_accepted_date'] = record.get('ANNUAL_ACCEPTED_DATE')
+                metric_record['ttm_accepted_date'] = record.get('LATEST_TTM_ACCEPTED_DATE')
+                metric_record['ttm_quarters_available'] = record.get('QUARTERS_AVAILABLE', 0)
                 
                 metrics_data.append(metric_record)
                 
@@ -394,7 +462,7 @@ class MarketMetricsETL(BaseETL):
             return len(metrics_data)
             
         except Exception as e:
-            logger.error(f"Failed to load market metrics data: {e}")
+            logger.error(f"Failed to load metric data: {e}")
             self.result.errors.append(f"Load failed: {str(e)}")
             raise
     
@@ -418,11 +486,11 @@ class MarketMetricsETL(BaseETL):
             # Extract
             raw_data = self.extract(symbols, start_date, end_date)
             if not raw_data:
-                logger.info("No new price data to process for market metrics")
+                logger.info("No new data to process for market metrics")
                 return {
                     'status': 'success',
                     'records_processed': 0,
-                    'message': 'No new price data to process'
+                    'message': 'No new data to process'
                 }
             
             # Transform
