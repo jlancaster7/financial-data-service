@@ -450,20 +450,25 @@ Sprint 5 (Operations & Deployment) - 9 points remaining:
 - Tests for all ETL pipelines (company, price, financial statements)
 - Mock testing for API calls and database operations
 
-### Story 7.2: Create Integration Tests
+### Story 7.2: Create Integration Tests 🚀 IN PROGRESS
 **As a** developer  
 **I want to** test the full pipeline end-to-end  
 **So that** we catch integration issues
 
 **Acceptance Criteria:**
-- [ ] Create test Snowflake schema
-- [ ] Test with subset of symbols
+- [x] Create test Snowflake schema
+- [x] Test with subset of symbols
 - [ ] Verify data in all tables
 - [ ] Test metric calculations
 - [ ] Clean up test data
 
 **Story Points:** 3  
-**Dependencies:** Story 7.2
+**Dependencies:** Story 7.1
+
+**Implementation Notes (Started 2025-06-13):**
+- Created comprehensive integration test plan (docs/integration-test-plan.md)
+- Started test_integration.py with framework setup
+- Successfully loaded 5 years of data for 5 companies (MSFT, AAPL, NVDA, AMZN, GOOGL)
 
 ### Story 7.3: Set up Cron Scheduling
 **As a** operations engineer  
@@ -479,6 +484,40 @@ Sprint 5 (Operations & Deployment) - 9 points remaining:
 
 **Story Points:** 2  
 **Dependencies:** Story 6.2
+
+---
+
+## Performance Optimization (Completed 2025-06-13)
+
+### Major Performance Improvements
+**Achievement:** 77% pipeline performance improvement (131s → 29.6s per symbol)
+
+**Key Optimizations Implemented:**
+1. **Bulk Insert Rewrite**
+   - Complete rewrite of SnowflakeConnector to use pandas write_pandas()
+   - Fixed critical timeout issue (5+ minutes → ~8 seconds for 1,256 records)
+   - Intelligent fallback to executemany for certificate errors
+
+2. **Parallel ETL Improvements**
+   - Fixed connection pooling and sharing for parallel execution
+   - Added connection establishment before parallel ETLs
+   - Proper connection reuse across all ETL operations
+
+3. **Market Metrics Fix**
+   - Fixed FACT_MARKET_METRICS loading (21 → 6,280 records)
+   - Created batch loading script to handle large date ranges
+   - Mitigated CTE query timeout issues with 180-day batches
+
+4. **Data Loading Achievements**
+   - Successfully loaded 5 years of historical data
+   - 6,280 daily prices, 106 financials, 91 TTM, 101 ratios, 6,280 market metrics
+   - All data for MSFT, AAPL, NVDA, AMZN, GOOGL
+
+**New Utilities Created:**
+- load_market_metrics_batch.py - Batch loading for market metrics
+- load_top_stocks_by_market_cap.py - S&P 500 data loading
+- truncate_all_tables.py - Data cleanup utility
+- Multiple documentation files for fixes and optimizations
 
 ---
 

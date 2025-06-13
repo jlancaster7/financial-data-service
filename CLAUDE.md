@@ -166,6 +166,27 @@ BATCH_SIZE=1000
 ENABLE_MONITORING=true
 ```
 
+## Recent Updates (2025-06-13)
+
+### Critical Performance Fix - Bulk Insert Rewrite ✅ COMPLETED
+Fixed major performance issue where bulk inserts were timing out:
+
+1. **Root Cause**: VARIANT column detection causing single-row inserts for ALL tables
+2. **Solution**: Complete rewrite using pandas write_pandas() with executemany fallback
+3. **Result**: 5+ minute timeouts → ~8 seconds for 1,256 records
+
+### FACT_MARKET_METRICS Fix ✅ COMPLETED
+Fixed market metrics loading issue:
+
+1. **Problem**: Only 21 records instead of 6,280 (complex CTE query timeouts)
+2. **Solution**: Created batch loading script (load_market_metrics_batch.py)
+3. **Result**: Successfully loaded all 6,280 market metrics records
+
+### New Utilities and Scripts
+- **load_market_metrics_batch.py**: Process market metrics in date batches to avoid timeouts
+- **load_top_stocks_by_market_cap.py**: Load S&P 500 companies by market cap
+- **truncate_all_tables.py**: Delete all data from all tables for testing
+
 ## Recent Updates (2025-06-12)
 
 ### Performance Optimizations ✅ COMPLETED
