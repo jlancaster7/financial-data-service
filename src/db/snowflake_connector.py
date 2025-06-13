@@ -1,48 +1,56 @@
-import snowflake.connector
-from snowflake.connector import SnowflakeConnection, ProgrammingError, DatabaseError
-from contextlib import contextmanager
-from typing import Dict, List, Any, Optional, Generator
-import pandas as pd
-import json
+"""
+Snowflake connector with optimized bulk insert using pandas
+"""
+
 import time
+import json
+import pandas as pd
+from contextlib import contextmanager
+from typing import Dict, List, Any, Optional, Union
+from datetime import date, datetime
+
+import snowflake.connector
+from snowflake.connector import DictCursor
+from snowflake.connector.pandas_tools import write_pandas
 from loguru import logger
-from src.utils.config import SnowflakeConfig
+
+from ..utils.config import SnowflakeConfig
 
 
 class SnowflakeConnector:
-    def __init__(self, config: SnowflakeConfig, use_pooling: bool = False, pool_size: int = 5):
+    """Manages Snowflake database connections and operations"""
+
+    def __init__(self, config: SnowflakeConfig, use_pooling: bool = False):
+        """
+        Initialize Snowflake connector
+
+        Args:
+            config: Snowflake configuration
+            use_pooling: Whether to use connection pooling (reuse connections)
+        """
         self.config = config
-        self._connection: Optional[SnowflakeConnection] = None
-        self.use_pooling = use_pooling  # For simple connection reuse
-        self.pool_size = pool_size  # Kept for future use
-        
-    def _get_connection_params(self) -> Dict[str, Any]:
-        return {
-            "account": self.config.account,
-            "user": self.config.user,
-            "password": self.config.password,
-            "warehouse": self.config.warehouse,
-            "database": self.config.database,
-            "schema": self.config.schema,
-            "role": self.config.role,
-            "client_session_keep_alive": True,
-            "autocommit": True
-        }
-    
-    
+        self.use_pooling = use_pooling
+        self._connection = None
+
     def connect(self) -> None:
         """Establish connection to Snowflake"""
-        try:
-            if self._connection is None or self._connection.is_closed():
-                logger.info("Connecting to Snowflake...")
-                self._connection = snowflake.connector.connect(**self._get_connection_params())
-                logger.info("Successfully connected to Snowflake")
-                if self.use_pooling:
-                    logger.info("Connection will be reused for better performance")
-        except Exception as e:
-            logger.error(f"Failed to connect to Snowflake: {e}")
-            raise
-    
+        if self._connection and not self._connection.is_closed():
+            logger.debug("Reusing existing Snowflake connection")
+            return
+
+        logger.info("Connecting to Snowflake...")
+        self._connection = snowflake.connector.connect(
+            account=self.config.account,
+            user=self.config.user,
+            password=self.config.password,
+            warehouse=self.config.warehouse,
+            database=self.config.database,
+            schema=self.config.schema,
+            role=self.config.role,
+            disable_ocsp_checks=True,
+        )
+        logger.info("Successfully connected to Snowflake")
+
     def disconnect(self) -> None:
         """Close Snowflake connection"""
         if self.use_pooling:
@@ -52,34 +60,34 @@ class SnowflakeConnector:
             if self._connection and not self._connection.is_closed():
                 self._connection.close()
                 logger.info("Disconnected from Snowflake")
-                self._connection = None
-    
-    @property
-    def connection(self) -> SnowflakeConnection:
-        """Get active connection, creating one if necessary"""
-        if self._connection is None or self._connection.is_closed():
-            self.connect()
-        return self._connection
-    
+
     @contextmanager
-    def cursor(self) -> Generator:
+    def cursor(self, dict_cursor: bool = True):
         """Context manager for cursor operations"""
-        cursor = None
+        cursor_class = DictCursor if dict_cursor else None
+        cursor = self._connection.cursor(cursor_class)
         try:
-            cursor = self.connection.cursor()
             yield cursor
-        except ProgrammingError as e:
-            logger.error(f"SQL execution error: {e}")
-            raise
-        except DatabaseError as e:
-            logger.error(f"Database error: {e}")
-            raise
         finally:
-            if cursor:
-                cursor.close()
-    
-    def execute(self, query: str, params: Optional[Dict[str, Any]] = None) -> None:
-        """Execute a query without returning results"""
+            cursor.close()
+
+    def __enter__(self):
+        """Context manager entry"""
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.disconnect()
+
+    def execute(self, query: str, params: Optional[Union[tuple, dict]] = None) -> None:
+        """
+        Execute a query without returning results
+
+        Args:
+            query: SQL query to execute
+            params: Query parameters
+        """
         with self.cursor() as cursor:
             logger.debug(f"Executing query: {query}")
             if params:
@@ -87,147 +95,254 @@ class SnowflakeConnector:
             else:
                 cursor.execute(query)
             logger.debug("Query executed successfully")
-    
-    def fetch_all(self, query: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        """Execute query and fetch all results as list of dicts"""
+
+    def execute_with_rowcount(self, query: str, params: Optional[Union[tuple, dict]] = None) -> int:
+        """
+        Execute a query and return the number of affected rows
+        
+        Args:
+            query: SQL query to execute
+            params: Query parameters
+            
+        Returns:
+            Number of rows affected
+        """
+        with self.cursor() as cursor:
+            logger.debug(f"Executing query: {query}")
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            rowcount = cursor.rowcount if cursor.rowcount is not None else 0
+            logger.debug(f"Query executed successfully, affected {rowcount} rows")
+            return rowcount
+
+    def fetch_all(
+        self, query: str, params: Optional[Union[tuple, dict]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Execute a query and fetch all results
+
+        Args:
+            query: SQL query to execute
+            params: Query parameters
+
+        Returns:
+            List of dictionaries containing the results
+        """
         with self.cursor() as cursor:
             logger.debug(f"Fetching data with query: {query}")
             if params:
                 cursor.execute(query, params)
             else:
                 cursor.execute(query)
-            
-            columns = [desc[0] for desc in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            results = cursor.fetchall()
             logger.debug(f"Fetched {len(results)} rows")
             return results
-    
-    def fetch_pandas(self, query: str, params: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
-        """Execute query and return results as pandas DataFrame"""
+
+    def fetch_one(
+        self, query: str, params: Optional[Union[tuple, dict]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Execute a query and fetch one result
+
+        Args:
+            query: SQL query to execute
+            params: Query parameters
+
+        Returns:
+            Dictionary containing the result or None
+        """
         with self.cursor() as cursor:
-            logger.debug(f"Fetching DataFrame with query: {query}")
             if params:
                 cursor.execute(query, params)
             else:
                 cursor.execute(query)
-            
-            df = cursor.fetch_pandas_all()
-            logger.debug(f"Fetched DataFrame with {len(df)} rows")
-            return df
-    
-    def bulk_insert(self, table: str, data: List[Dict[str, Any]], chunk_size: int = 1000) -> None:
-        """Bulk insert data into table"""
+            return cursor.fetchone()
+
+    def bulk_insert(self, table: str, data: List[Dict[str, Any]]) -> int:
+        """
+        Bulk insert data into a table using pandas write_pandas for optimal performance
+
+        Args:
+            table: Target table name (can include schema)
+            data: List of dictionaries containing the data
+
+        Returns:
+            Number of rows inserted
+        """
         if not data:
             logger.warning("No data to insert")
-            return
-        
-        import json
-        
+            return 0
+
+        logger.info(f"Bulk inserting {len(data)} rows into {table}")
+
         # Common VARIANT column names in our schema
-        variant_columns = {'raw_data', 'metadata', 'error_details'}
-        
-        # Get column names from first record
+        variant_columns = {"raw_data", "metadata", "error_details"}
+
+        # Check if any columns need special handling for VARIANT
         columns = list(data[0].keys())
-        
-        # Build INSERT statement with SELECT and PARSE_JSON for VARIANT columns
-        placeholders = []
-        select_parts = []
-        for col in columns:
-            placeholders.append(f"{col}")
-            if col.lower() in variant_columns:
-                # For VARIANT columns, use PARSE_JSON
-                select_parts.append(f"PARSE_JSON(%s)")
-            else:
-                select_parts.append("%s")
-        
-        column_list = ", ".join(placeholders)
-        select_list = ", ".join(select_parts)
-        
-        query = f"INSERT INTO {table} ({column_list}) SELECT {select_list}"
-        
-        with self.cursor() as cursor:
-            logger.info(f"Bulk inserting {len(data)} rows into {table}")
-            
-            # Use single-row inserts since executemany doesn't work with PARSE_JSON
-            inserted = 0
+        has_variant = any(col.lower() in variant_columns for col in columns)
+
+        # Convert data to DataFrame
+        if has_variant:
+            # Pre-process VARIANT columns to JSON strings
+            processed_data = []
             for record in data:
-                try:
-                    row_values = []
-                    for col in columns:
-                        value = record[col]
-                        # Ensure VARIANT columns are JSON strings
-                        if col.lower() in variant_columns and not isinstance(value, str):
-                            value = json.dumps(value)
-                        row_values.append(value)
-                    
-                    cursor.execute(query, tuple(row_values))
-                    inserted += 1
-                    
-                    if inserted % 100 == 0:
-                        logger.debug(f"Inserted {inserted} rows...")
-                        
-                except Exception as e:
-                    logger.error(f"Failed to insert row: {e}")
-                    logger.error(f"Row data: {record}")
-                    raise
-            
-            logger.info(f"Bulk insert completed for {table} - inserted {inserted} rows")
-            return inserted
-    
-    def merge(self, table: str, data: List[Dict[str, Any]], 
-              merge_keys: List[str], update_columns: Optional[List[str]] = None) -> int:
+                processed_record = {}
+                for col, value in record.items():
+                    if col.lower() in variant_columns and not isinstance(value, str):
+                        processed_record[col] = json.dumps(value)
+                    else:
+                        processed_record[col] = value
+                processed_data.append(processed_record)
+            df = pd.DataFrame(processed_data)
+        else:
+            # Direct conversion for non-VARIANT data
+            df = pd.DataFrame(data)
+
+        try:
+            # Parse table name and schema
+            parts = table.split(".")
+            if len(parts) == 2:
+                schema_name = parts[0]
+                table_name = parts[1]
+            else:
+                schema_name = self._connection.schema
+                table_name = table
+
+            # Use write_pandas for fast bulk insert
+            success, nchunks, nrows, _ = write_pandas(
+                conn=self._connection,
+                df=df,
+                table_name=table_name,
+                database=self._connection.database,
+                schema=schema_name,
+                auto_create_table=False,
+                overwrite=False,
+            )
+
+            if success:
+                logger.info(
+                    f"Bulk insert completed for {table} - inserted {nrows} rows in {nchunks} chunks"
+                )
+                return nrows
+            else:
+                raise Exception("write_pandas failed")
+
+        except Exception as e:
+            logger.error(f"Bulk insert with write_pandas failed: {e}")
+            # Fall back to executemany method
+            logger.warning("Falling back to executemany method")
+            return self._bulk_insert_fallback(table, data, columns, has_variant)
+
+    def _bulk_insert_fallback(
+        self,
+        table: str,
+        data: List[Dict[str, Any]],
+        columns: List[str],
+        has_variant: bool,
+    ) -> int:
+        """Fallback method for bulk insert if write_pandas fails"""
+        variant_columns = {"raw_data", "metadata", "error_details"}
+
+        with self.cursor() as cursor:
+            if has_variant:
+                # Single-row inserts for VARIANT columns
+                inserted = 0
+                for record in data:
+                    try:
+                        row_values = []
+                        placeholders = []
+                        for col in columns:
+                            value = record[col]
+                            if col.lower() in variant_columns:
+                                if not isinstance(value, str):
+                                    value = json.dumps(value)
+                                placeholders.append(f"PARSE_JSON(%s)")
+                            else:
+                                placeholders.append("%s")
+                            row_values.append(value)
+
+                        query = f"INSERT INTO {table} ({','.join(columns)}) SELECT {','.join(placeholders)}"
+                        cursor.execute(query, tuple(row_values))
+                        inserted += 1
+
+                        if inserted % 100 == 0:
+                            logger.debug(f"Inserted {inserted} rows...")
+                    except Exception as e:
+                        logger.error(f"Failed to insert row: {e}")
+                        raise
+
+                logger.info(
+                    f"Fallback bulk insert completed for {table} - inserted {inserted} rows"
+                )
+                return inserted
+            else:
+                # Use executemany for non-VARIANT data
+                values = []
+                for record in data:
+                    row_values = [record[col] for col in columns]
+                    values.append(tuple(row_values))
+
+                query = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({','.join(['%s'] * len(columns))})"
+                cursor.executemany(query, values)
+                inserted = cursor.rowcount
+                logger.info(
+                    f"Fallback bulk insert completed for {table} - inserted {inserted} rows"
+                )
+                return inserted
+
+    def merge(
+        self,
+        table: str,
+        data: List[Dict[str, Any]],
+        merge_keys: List[str],
+        update_columns: Optional[List[str]] = None,
+    ) -> int:
         """
         Merge data into table using MERGE statement
-        
+
         Args:
             table: Target table name
             data: List of dictionaries containing the data
             merge_keys: List of column names to use for matching
             update_columns: List of columns to update (if None, updates all non-key columns)
-            
+
         Returns:
             Number of rows affected
         """
         if not data:
+            logger.warning("No data to merge")
             return 0
-        
-        # Get table metadata to identify VARIANT columns
-        variant_columns = set()
-        with self.cursor() as cursor:
-            cursor.execute(f"""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_schema = SPLIT_PART('{table}', '.', 1)
-                AND table_name = SPLIT_PART('{table}', '.', 2)
-                AND data_type = 'VARIANT'
-            """)
-            variant_columns = {row[0].lower() for row in cursor.fetchall()}
-        
+
         # Get all columns from first record
         columns = list(data[0].keys())
-        
+
         # If update_columns not specified, use all non-key columns
         if update_columns is None:
             update_columns = [col for col in columns if col not in merge_keys]
-        
+
         # Create temporary table with same structure
         temp_table = f"{table}_TEMP_{int(time.time() * 1000)}"
-        
+
         with self.cursor() as cursor:
             # Create temp table
             cursor.execute(f"CREATE TEMPORARY TABLE {temp_table} LIKE {table}")
-            
-            # Insert data into temp table using existing bulk_insert logic
+
+            # Insert data into temp table using bulk_insert
             self.bulk_insert(temp_table, data)
-            
+
             # Build MERGE statement
-            merge_conditions = " AND ".join([f"target.{key} = source.{key}" for key in merge_keys])
+            merge_conditions = " AND ".join(
+                [f"target.{key} = source.{key}" for key in merge_keys]
+            )
             update_sets = ", ".join([f"{col} = source.{col}" for col in update_columns])
-            
+
             # Build insert columns and values
             insert_columns = ", ".join(columns)
             insert_values = ", ".join([f"source.{col}" for col in columns])
-            
+
             merge_query = f"""
             MERGE INTO {table} AS target
             USING {temp_table} AS source
@@ -238,54 +353,13 @@ class SnowflakeConnector:
                 INSERT ({insert_columns})
                 VALUES ({insert_values})
             """
-            
+
             logger.debug(f"Executing MERGE: {merge_query}")
-            result = cursor.execute(merge_query)
-            
-            # Get affected row count
-            affected = cursor.rowcount if cursor.rowcount else 0
-            
+            cursor.execute(merge_query)
+            rows_affected = cursor.rowcount
+
             # Drop temp table
             cursor.execute(f"DROP TABLE {temp_table}")
-            
-            logger.info(f"Merge completed for {table} - affected {affected} rows")
-            return affected
-    
-    def truncate_table(self, table: str) -> None:
-        """Truncate a table"""
-        query = f"TRUNCATE TABLE IF EXISTS {table}"
-        self.execute(query)
-        logger.info(f"Truncated table {table}")
-    
-    def table_exists(self, table: str, schema: Optional[str] = None) -> bool:
-        """Check if table exists"""
-        schema = schema or self.config.schema
-        query = """
-            SELECT COUNT(*) as count
-            FROM INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_SCHEMA = %(schema)s
-            AND TABLE_NAME = %(table)s
-        """
-        result = self.fetch_all(query, {"schema": schema.upper(), "table": table.upper()})
-        return result[0]["COUNT"] > 0 if result else False
-    
-    def get_table_row_count(self, table: str) -> int:
-        """Get row count for a table"""
-        query = f"SELECT COUNT(*) as count FROM {table}"
-        result = self.fetch_all(query)
-        return result[0]["COUNT"] if result else 0
-    
-    def close_pool(self) -> None:
-        """Close connection when using pooling mode"""
-        if self.use_pooling and self._connection and not self._connection.is_closed():
-            self._connection.close()
-            logger.info("Closed reusable connection")
-            self._connection = None
-    
-    def __enter__(self):
-        self.connect()
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.disconnect()
-        # Connection persists if using pooling mode
+
+            logger.info(f"Merge completed for {table} - affected {rows_affected} rows")
+            return rows_affected

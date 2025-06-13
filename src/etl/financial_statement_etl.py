@@ -39,14 +39,14 @@ class FinancialStatementETL(BaseETL):
         self.data_quality_issues = []
         
     def extract(self, symbols: List[str], period: str = 'annual', 
-                limit: int = 5) -> Dict[str, List[Dict[str, Any]]]:
+                limit: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
         Extract financial statement data from FMP API
         
         Args:
             symbols: List of stock symbols
             period: 'annual' or 'quarterly'
-            limit: Number of periods to fetch
+            limit: Number of periods to fetch (None for no limit)
             
         Returns:
             Dict with 'income', 'balance', 'cashflow' keys containing raw data
@@ -460,7 +460,7 @@ class FinancialStatementETL(BaseETL):
                 
                 # Prepare parameters: symbols + from_date
                 params = list(symbols) + [from_date]
-                affected = conn.execute(merge_query, tuple(params))
+                affected = conn.execute_with_rowcount(merge_query, tuple(params))
                 logger.info(f"Updated {affected} records in FACT_FINANCIALS")
                 
             except Exception as e:

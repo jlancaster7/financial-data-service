@@ -93,6 +93,9 @@ class HistoricalPriceETL(BaseETL):
         """
         Transform raw price data to structured format
         
+        Note: We still create 'raw' structure for future compatibility,
+        but it's not loaded due to performance issues with VARIANT columns.
+        
         Args:
             raw_data: List of raw price records
             
@@ -142,6 +145,9 @@ class HistoricalPriceETL(BaseETL):
         """
         Load transformed data to Snowflake
         
+        NOTE: RAW layer is skipped for price data due to VARIANT column 
+        performance issues. Price data goes directly to STAGING.
+        
         Args:
             transformed_data: Dict with 'raw' and 'staging' data
             
@@ -151,23 +157,21 @@ class HistoricalPriceETL(BaseETL):
         total_loaded = 0
         
         with self.snowflake as conn:
-            # Load to RAW layer
-            if transformed_data['raw']:
-                try:
-                    affected = conn.bulk_insert(
-                        table='RAW_DATA.RAW_HISTORICAL_PRICES',
-                        data=transformed_data['raw']
-                    )
-                    total_loaded += affected or 0
-                    logger.info(f"Loaded {affected} records to RAW_HISTORICAL_PRICES")
-                except Exception as e:
-                    logger.error(f"Failed to load raw price data: {e}")
-                    self.job_errors.append({
-                        'error': str(e),
-                        'phase': 'load_raw'
-                    })
+            # SKIP RAW LAYER FOR PRICE DATA
+            # Reason: VARIANT columns cause single-row inserts (extremely slow)
+            # Price data structure is simple and well-defined, staging is sufficient
+            # TODO: Future options:
+            #   1. Implement write_pandas for VARIANT columns
+            #   2. Store raw JSON in S3/blob storage
+            #   3. Fix bulk insert to handle VARIANT efficiently
             
-            # Load to STAGING layer using MERGE to avoid duplicates
+            if transformed_data.get('raw'):
+                logger.warning(
+                    f"Skipping RAW layer load for {len(transformed_data['raw'])} "
+                    f"price records due to VARIANT performance issues"
+                )
+            
+            # Load directly to STAGING layer using MERGE
             if transformed_data['staging']:
                 try:
                     affected = conn.merge(
@@ -259,7 +263,7 @@ class HistoricalPriceETL(BaseETL):
                 
                 # Prepare parameters: symbols + from_date
                 params = list(symbols) + [from_date]
-                affected = conn.execute(merge_query, tuple(params))
+                affected = conn.execute_with_rowcount(merge_query, tuple(params))
                 logger.info(f"Updated {affected} records in FACT_DAILY_PRICES")
                 
             except Exception as e:

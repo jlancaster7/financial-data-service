@@ -118,16 +118,19 @@ class FMPClient:
     def get_income_statement(self, 
                            symbol: str, 
                            period: str = 'annual',
-                           limit: int = 5) -> List[Dict[str, Any]]:
+                           limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Get income statement data
         Endpoint: income-statement?symbol=AAPL
         """
         endpoint = "income-statement"
         params = {
-            'symbol': symbol,
-            'limit': limit
+            'symbol': symbol
         }
+        
+        # Only add limit if specified
+        if limit is not None:
+            params['limit'] = limit
         
         # Handle period parameter
         if period.lower() == 'annual':
@@ -148,16 +151,19 @@ class FMPClient:
     def get_balance_sheet(self, 
                          symbol: str, 
                          period: str = 'annual',
-                         limit: int = 5) -> List[Dict[str, Any]]:
+                         limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Get balance sheet data
         Endpoint: balance-sheet-statement?symbol=AAPL
         """
         endpoint = "balance-sheet-statement"
         params = {
-            'symbol': symbol,
-            'limit': limit
+            'symbol': symbol
         }
+        
+        # Only add limit if specified
+        if limit is not None:
+            params['limit'] = limit
         
         if period.lower() == 'annual':
             params['period'] = 'FY'
@@ -176,16 +182,19 @@ class FMPClient:
     def get_cash_flow(self, 
                      symbol: str, 
                      period: str = 'annual',
-                     limit: int = 5) -> List[Dict[str, Any]]:
+                     limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Get cash flow statement data
         Endpoint: cash-flow-statement?symbol=AAPL
         """
         endpoint = "cash-flow-statement"
         params = {
-            'symbol': symbol,
-            'limit': limit
+            'symbol': symbol
         }
+        
+        # Only add limit if specified
+        if limit is not None:
+            params['limit'] = limit
         
         if period.lower() == 'annual':
             params['period'] = 'FY'

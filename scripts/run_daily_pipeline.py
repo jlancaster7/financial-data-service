@@ -38,8 +38,7 @@ class PipelineOrchestrator:
         # Create pooled connection for shared use
         self.snowflake = SnowflakeConnector(
             config.snowflake, 
-            use_pooling=True,
-            pool_size=config.app.connection_pool_size
+            use_pooling=True
         ) if not dry_run else None
         self.results = {}
         self.start_time = None
@@ -74,7 +73,10 @@ class PipelineOrchestrator:
             return True
         
         try:
+            # Create ETL with shared connector
             etl = CompanyETL(self.config)
+            # Replace the ETL's snowflake connector with our shared one
+            etl.snowflake = self.snowflake
             
             # Extract data
             company_data = etl.extract(symbols=symbols, load_to_analytics=not args.skip_analytics)
@@ -134,7 +136,10 @@ class PipelineOrchestrator:
             return True
         
         try:
+            # Create ETL with shared connector
             etl = HistoricalPriceETL(self.config)
+            # Replace the ETL's snowflake connector with our shared one
+            etl.snowflake = self.snowflake
             
             # Extract data
             price_data = etl.extract(symbols=symbols, from_date=from_date, to_date=to_date)
@@ -191,7 +196,10 @@ class PipelineOrchestrator:
             return True
         
         try:
+            # Create ETL with shared connector
             etl = FinancialStatementETL(self.config)
+            # Replace the ETL's snowflake connector with our shared one
+            etl.snowflake = self.snowflake
             
             # Extract data
             statement_data = etl.extract(symbols=symbols, period=args.period, limit=args.limit)
@@ -252,7 +260,10 @@ class PipelineOrchestrator:
             return True
         
         try:
+            # Create ETL with shared connector
             etl = FinancialRatioETL(self.config)
+            # Replace the ETL's snowflake connector with our shared one
+            etl.snowflake = self.snowflake
             
             # Run the ETL
             result = etl.run(
@@ -286,7 +297,10 @@ class PipelineOrchestrator:
             return True
         
         try:
+            # Create ETL with shared connector
             etl = TTMCalculationETL(self.config)
+            # Replace the ETL's snowflake connector with our shared one
+            etl.snowflake = self.snowflake
             
             # Run the ETL
             result = etl.run(symbols=symbols if not args.all_symbols else None)
@@ -316,7 +330,10 @@ class PipelineOrchestrator:
             return True
         
         try:
+            # Create ETL with shared connector
             etl = MarketMetricsETL(self.config)
+            # Replace the ETL's snowflake connector with our shared one
+            etl.snowflake = self.snowflake
             
             # Determine date range for market metrics
             if args.from_date:
@@ -413,6 +430,10 @@ class PipelineOrchestrator:
                 dependent_etls.append((name, func))
         
         pipeline_timings = {}
+        
+        # Ensure connection is established before parallel execution
+        if self.snowflake:
+            self.snowflake.connect()
         
         # Execute Group 1 in parallel
         if independent_etls:
@@ -640,8 +661,8 @@ Examples:
     parser.add_argument(
         "--limit",
         type=int,
-        default=5,
-        help="Number of periods to fetch (default: 5)"
+        default=None,
+        help="Number of periods to fetch (default: no limit)"
     )
     
     args = parser.parse_args()
