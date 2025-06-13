@@ -70,13 +70,21 @@ class AppConfig:
     log_level: str
     batch_size: int
     enable_monitoring: bool
+    # Performance settings
+    connection_pool_size: int
+    pipeline_timeout: int
+    enable_parallel_processing: bool
     
     @classmethod
     def from_env(cls) -> "AppConfig":
         return cls(
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             batch_size=int(os.getenv("BATCH_SIZE", "1000")),
-            enable_monitoring=os.getenv("ENABLE_MONITORING", "true").lower() == "true"
+            enable_monitoring=os.getenv("ENABLE_MONITORING", "true").lower() == "true",
+            # Performance settings with sensible defaults
+            connection_pool_size=int(os.getenv("CONNECTION_POOL_SIZE", "5")),
+            pipeline_timeout=int(os.getenv("PIPELINE_TIMEOUT", "600")),  # 10 minutes
+            enable_parallel_processing=os.getenv("ENABLE_PARALLEL_PROCESSING", "true").lower() == "true"
         )
 
 

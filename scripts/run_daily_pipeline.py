@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 
 # Add the src directory to the path
@@ -34,8 +35,14 @@ class PipelineOrchestrator:
         self.config = config
         self.dry_run = dry_run
         self.fmp_client = FMPClient(config.fmp) if not dry_run else None
-        self.snowflake = SnowflakeConnector(config.snowflake) if not dry_run else None
+        # Create pooled connection for shared use
+        self.snowflake = SnowflakeConnector(
+            config.snowflake, 
+            use_pooling=True,
+            pool_size=config.app.connection_pool_size
+        ) if not dry_run else None
         self.results = {}
+        self.start_time = None
         
     def get_symbols(self, args) -> List[str]:
         """Get symbols to process based on arguments"""
@@ -348,10 +355,13 @@ class PipelineOrchestrator:
         Returns:
             Exit code: 0 for success, 1 for partial success, 2 for failure
         """
-        start_time = datetime.now()
+        import time
+        pipeline_start_time = time.time()
+        start_datetime = datetime.now()
         logger.info(f"{'='*60}")
-        logger.info(f"Starting Daily Pipeline Update at {start_time}")
+        logger.info(f"Starting Daily Pipeline Update at {start_datetime}")
         logger.info(f"Dry Run: {self.dry_run}")
+        logger.info(f"Using Connection Pooling: {self.snowflake.use_pooling if self.snowflake else 'N/A'}")
         logger.info(f"{'='*60}")
         
         # Get symbols to process
@@ -386,25 +396,90 @@ class PipelineOrchestrator:
         if not args.skip_market_metrics:
             pipelines.append(('market_metrics', self.run_market_metrics_etl))
         
-        # Execute pipelines
-        for name, pipeline_func in pipelines:
-            logger.info(f"\n{'-'*60}")
-            success = pipeline_func(symbols, args)
-            if success:
-                any_success = True
-            else:
-                all_success = False
+        # Group pipelines by dependencies
+        # Group 1: Independent ETLs (can run in parallel)
+        independent_etls = []
+        if 'company' in [name for name, _ in pipelines]:
+            independent_etls.append(('company', self.run_company_etl))
+        if 'price' in [name for name, _ in pipelines]:
+            independent_etls.append(('price', self.run_price_etl))
+        if 'financial' in [name for name, _ in pipelines]:
+            independent_etls.append(('financial', self.run_financial_etl))
+        
+        # Group 2: Dependent ETLs (must run after Group 1)
+        dependent_etls = []
+        for name, func in pipelines:
+            if name not in ['company', 'price', 'financial']:
+                dependent_etls.append((name, func))
+        
+        pipeline_timings = {}
+        
+        # Execute Group 1 in parallel
+        if independent_etls:
+            logger.info(f"\n{'='*60}")
+            logger.info("PHASE 1: Running independent ETLs in parallel")
+            logger.info(f"Parallel ETLs: {[name for name, _ in independent_etls]}")
+            logger.info(f"{'='*60}")
+            
+            group1_start = time.time()
+            
+            with ThreadPoolExecutor(max_workers=len(independent_etls)) as executor:
+                futures = {}
+                
+                # Submit all independent ETLs
+                for name, func in independent_etls:
+                    logger.info(f"Starting {name} ETL (parallel)")
+                    future = executor.submit(func, symbols, args)
+                    futures[future] = (name, time.time())
+                
+                # Wait for completion
+                for future in as_completed(futures):
+                    name, start_time = futures[future]
+                    try:
+                        success = future.result()
+                        duration = time.time() - start_time
+                        pipeline_timings[name] = duration
+                        if success:
+                            any_success = True
+                        else:
+                            all_success = False
+                    except Exception as e:
+                        logger.error(f"{name} ETL failed with exception: {e}")
+                        all_success = False
+                        pipeline_timings[name] = time.time() - start_time
+            
+            group1_duration = time.time() - group1_start
+            logger.info(f"Phase 1 completed in {group1_duration:.1f}s")
+        
+        # Execute Group 2 sequentially (dependent ETLs)
+        if dependent_etls:
+            logger.info(f"\n{'='*60}")
+            logger.info("PHASE 2: Running dependent ETLs sequentially")
+            logger.info(f"Sequential ETLs: {[name for name, _ in dependent_etls]}")
+            logger.info(f"{'='*60}")
+            
+            for name, pipeline_func in dependent_etls:
+                logger.info(f"\n{'-'*60}")
+                pipeline_start = time.time()
+                success = pipeline_func(symbols, args)
+                pipeline_duration = time.time() - pipeline_start
+                pipeline_timings[name] = pipeline_duration
+                
+                if success:
+                    any_success = True
+                else:
+                    all_success = False
         
         # Summary
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
+        end_datetime = datetime.now()
+        total_duration = time.time() - pipeline_start_time
         
         logger.info(f"\n{'='*60}")
         logger.info("Pipeline Execution Summary")
         logger.info(f"{'='*60}")
-        logger.info(f"Start Time: {start_time}")
-        logger.info(f"End Time: {end_time}")
-        logger.info(f"Duration: {duration:.1f} seconds")
+        logger.info(f"Start Time: {start_datetime}")
+        logger.info(f"End Time: {end_datetime}")
+        logger.info(f"Duration: {total_duration:.1f} seconds")
         logger.info(f"Symbols Processed: {len(symbols)}")
         
         # Pipeline results
@@ -412,10 +487,19 @@ class PipelineOrchestrator:
         for pipeline, result in self.results.items():
             status = result.get('status', 'not_run')
             records = result.get('records_loaded', 0)
-            logger.info(f"  {pipeline.title()}: {status} ({records} records)")
+            timing = pipeline_timings.get(pipeline, 0)
+            logger.info(f"  {pipeline.title()}: {status} ({records} records, {timing:.1f}s)")
             if result.get('errors'):
                 for error in result['errors'][:3]:  # Show first 3 errors
                     logger.error(f"    - {error}")
+        
+        # Performance Summary
+        logger.info("\nPerformance Summary:")
+        total_pipeline_time = sum(pipeline_timings.values())
+        logger.info(f"  Total Pipeline Time: {total_pipeline_time:.1f}s")
+        logger.info(f"  Average Time per Symbol: {total_pipeline_time/len(symbols):.1f}s")
+        if pipeline_timings:
+            logger.info(f"  Slowest Pipeline: {max(pipeline_timings, key=pipeline_timings.get)} ({max(pipeline_timings.values()):.1f}s)")
         
         # Determine exit code
         if all_success:
@@ -427,6 +511,15 @@ class PipelineOrchestrator:
         else:
             logger.error("\n✗ All pipelines failed")
             return 2
+
+
+    def cleanup(self):
+        """Clean up resources"""
+        if self.snowflake:
+            if hasattr(self.snowflake, 'close_pool'):
+                self.snowflake.close_pool()
+            self.snowflake.disconnect()
+        logger.info("Cleanup completed")
 
 
 def main():
@@ -562,7 +655,11 @@ Examples:
     
     # Create and run orchestrator
     orchestrator = PipelineOrchestrator(config, dry_run=args.dry_run)
-    return orchestrator.run_daily_update(args)
+    try:
+        exit_code = orchestrator.run_daily_update(args)
+        return exit_code
+    finally:
+        orchestrator.cleanup()
 
 
 if __name__ == "__main__":

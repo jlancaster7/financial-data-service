@@ -10,9 +10,11 @@ from src.utils.config import SnowflakeConfig
 
 
 class SnowflakeConnector:
-    def __init__(self, config: SnowflakeConfig):
+    def __init__(self, config: SnowflakeConfig, use_pooling: bool = False, pool_size: int = 5):
         self.config = config
         self._connection: Optional[SnowflakeConnection] = None
+        self.use_pooling = use_pooling  # For simple connection reuse
+        self.pool_size = pool_size  # Kept for future use
         
     def _get_connection_params(self) -> Dict[str, Any]:
         return {
@@ -27,6 +29,7 @@ class SnowflakeConnector:
             "autocommit": True
         }
     
+    
     def connect(self) -> None:
         """Establish connection to Snowflake"""
         try:
@@ -34,16 +37,22 @@ class SnowflakeConnector:
                 logger.info("Connecting to Snowflake...")
                 self._connection = snowflake.connector.connect(**self._get_connection_params())
                 logger.info("Successfully connected to Snowflake")
+                if self.use_pooling:
+                    logger.info("Connection will be reused for better performance")
         except Exception as e:
             logger.error(f"Failed to connect to Snowflake: {e}")
             raise
     
     def disconnect(self) -> None:
         """Close Snowflake connection"""
-        if self._connection and not self._connection.is_closed():
-            self._connection.close()
-            logger.info("Disconnected from Snowflake")
-            self._connection = None
+        if self.use_pooling:
+            # Keep connection alive for reuse
+            logger.debug("Keeping connection alive for reuse")
+        else:
+            if self._connection and not self._connection.is_closed():
+                self._connection.close()
+                logger.info("Disconnected from Snowflake")
+                self._connection = None
     
     @property
     def connection(self) -> SnowflakeConnection:
@@ -266,9 +275,17 @@ class SnowflakeConnector:
         result = self.fetch_all(query)
         return result[0]["COUNT"] if result else 0
     
+    def close_pool(self) -> None:
+        """Close connection when using pooling mode"""
+        if self.use_pooling and self._connection and not self._connection.is_closed():
+            self._connection.close()
+            logger.info("Closed reusable connection")
+            self._connection = None
+    
     def __enter__(self):
         self.connect()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.disconnect()
+        # Connection persists if using pooling mode

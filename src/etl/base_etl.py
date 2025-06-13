@@ -172,11 +172,14 @@ class BaseETL(ABC):
         try:
             # Extract phase
             logger.info("Starting extraction phase")
+            extract_start = time.time()
             self._run_hooks(self._pre_extract_hooks)
             raw_data = self._extract_with_retry()
             self.result.records_extracted = len(raw_data)
             self._run_hooks(self._post_extract_hooks, data=raw_data)
-            logger.info(f"Extracted {len(raw_data)} records")
+            extract_duration = time.time() - extract_start
+            logger.info(f"Extracted {len(raw_data)} records in {extract_duration:.2f}s")
+            self.result.metadata['extract_duration'] = extract_duration
             
             if not raw_data:
                 logger.warning("No data extracted, ending job")
@@ -186,19 +189,25 @@ class BaseETL(ABC):
             
             # Transform phase
             logger.info("Starting transformation phase")
+            transform_start = time.time()
             self._run_hooks(self._pre_transform_hooks, data=raw_data)
             transformed_data = self._transform_with_validation(raw_data)
             self.result.records_transformed = len(transformed_data.get('staging', []))
             self._run_hooks(self._post_transform_hooks, data=transformed_data)
-            logger.info(f"Transformed {self.result.records_transformed} records")
+            transform_duration = time.time() - transform_start
+            logger.info(f"Transformed {self.result.records_transformed} records in {transform_duration:.2f}s")
+            self.result.metadata['transform_duration'] = transform_duration
             
             # Load phase
             logger.info("Starting load phase")
+            load_start = time.time()
             self._run_hooks(self._pre_load_hooks, data=transformed_data)
             records_loaded = self._load_in_batches(transformed_data)
             self.result.records_loaded = records_loaded
             self._run_hooks(self._post_load_hooks, count=records_loaded)
-            logger.info(f"Loaded {records_loaded} records")
+            load_duration = time.time() - load_start
+            logger.info(f"Loaded {records_loaded} records in {load_duration:.2f}s")
+            self.result.metadata['load_duration'] = load_duration
             
             # Determine final status
             if self.result.errors:

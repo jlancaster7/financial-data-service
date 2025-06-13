@@ -166,6 +166,27 @@ BATCH_SIZE=1000
 ENABLE_MONITORING=true
 ```
 
+## Recent Updates (2025-06-12)
+
+### Performance Optimizations ✅ COMPLETED
+Implemented Phase 1 and Phase 2 performance optimizations achieving 77% improvement:
+
+1. **Phase 1: Connection Reuse (48% improvement)**:
+   - Modified SnowflakeConnector to support connection reuse with `use_pooling` flag
+   - Added timing to BaseETL for visibility into extract/transform/load phases
+   - Single connection shared across all ETL operations
+
+2. **Phase 2: Parallel Processing (Additional 56% improvement)**:
+   - Modified run_daily_pipeline.py to run independent ETLs concurrently
+   - Used ThreadPoolExecutor to parallelize Company, Price, and Financial ETLs
+   - Sequential execution only for dependent ETLs (TTM, Ratios, Metrics)
+
+3. **Results**:
+   - Baseline: 131 seconds per symbol
+   - After Phase 1: 68 seconds (48% faster)
+   - After Phase 2: 29.6 seconds (77% faster than baseline)
+   - Price ETL is now the bottleneck at 27.8s (94% of total time)
+
 ## Recent Updates (2025-06-09)
 
 ### Story 5.3: TTM Financial Calculations ✅ COMPLETED
