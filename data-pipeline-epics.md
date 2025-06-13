@@ -8,36 +8,41 @@ Build a simplified data pipeline to populate Snowflake with equity market data f
 - **Sprint 2**: ✅ COMPLETED (14/14 points - 100%)
 - **Sprint 3**: ✅ COMPLETED (21/21 points - 100%)
 - **Sprint 4**: ✅ COMPLETED (8/8 points - 100%)
-- **Sprint 5**: 🚀 IN PROGRESS (5/22 points - 23%)
-- **Total Progress**: 61/78 points (78% complete)
+- **Sprint 5**: 🚀 IN PROGRESS (13/22 points - 59%)
+- **Total Progress**: 69/78 points (88% complete)
 
 ## What's Next
 
-Sprint 5 (Operations & Deployment) - 17 points remaining:
+Sprint 5 (Operations & Deployment) - 9 points remaining:
 
 **Epic 6: Monitoring and Operations**
-1. **Story 6.1**: Create ETL Monitoring Dashboard (3 points)
-   - Build Snowflake dashboard for job monitoring
-   - Track success rates and performance metrics
+1. **Story 6.1**: Implement Data Freshness Monitoring (2 points)
+   - Create monitor.py script
+   - Check last update time for each table
+   - Return proper exit codes for alerting
    
-2. **Story 6.2**: Implement Alerting System (2 points)
-   - Set up email alerts for failures
-   - Create Slack integration for notifications
+2. **Story 6.2**: Set up Email Alerts (2 points)
+   - Add email configuration to config.py
+   - Create send_alert function
+   - Alert on pipeline failures
 
-3. **Story 6.3**: Create Data Quality Dashboard (2 points)
-   - Monitor data freshness and completeness
-   - Track quality metrics over time
+**Epic 7: Testing and Deployment**
+3. **Story 7.2**: Create Integration Tests (3 points)
+   - Create test Snowflake schema
+   - Test full pipeline end-to-end
+   - Verify metric calculations
 
-**Epic 7: Deployment and Documentation**
-4. **Story 7.1**: Create Production Deployment Guide (3 points)
+4. **Story 7.3**: Set up Cron Scheduling (2 points)
+   - Create cron entries for daily pipeline
+   - Schedule monitoring checks
+   - Document timezone considerations
+
+**Additional Documentation**
+5. **Story 7.4**: Create Production Deployment Guide (3 points)
    - Document deployment process
-   - Create runbooks for operations
+   - Create setup procedures
 
-5. **Story 7.2**: Set up CI/CD Pipeline (4 points)
-   - GitHub Actions for testing and deployment
-   - Automated quality checks
-
-6. **Story 7.3**: Create User Documentation (3 points)
+6. **Story 7.5**: Create User Documentation (2 points)
    - API documentation
    - User guides for analysts
 
@@ -396,20 +401,29 @@ Sprint 5 (Operations & Deployment) - 17 points remaining:
 **Story Points:** 2  
 **Dependencies:** Story 6.1
 
-### Story 6.3: Create Operational Runbook
+### Story 6.3: Create Operational Runbook ✅ COMPLETED
 **As a** operations engineer  
 **I want to** have clear troubleshooting procedures  
 **So that** any team member can resolve issues
 
 **Acceptance Criteria:**
-- [ ] Document common failure scenarios
-- [ ] Create troubleshooting steps
-- [ ] Add data recovery procedures
-- [ ] Include contact information
-- [ ] Test procedures with team
+- [x] Document common failure scenarios
+- [x] Create troubleshooting steps
+- [x] Add data recovery procedures
+- [x] Include contact information
+- [x] Test procedures with team
 
 **Story Points:** 3  
 **Dependencies:** All previous stories
+
+**Implementation Notes (Completed 2025-06-12):**
+- Created comprehensive operational runbook (docs/operational-runbook.md)
+- Documented all discovered issues and solutions
+- Included troubleshooting for each ETL pipeline
+- Added performance optimization guidance
+- Created data recovery and maintenance procedures
+- Included quick reference and useful SQL queries
+- Created update_sp500_constituents.py utility script
 
 ---
 
@@ -508,13 +522,13 @@ Sprint 5 (Operations & Deployment) - 17 points remaining:
 - **Total: 8 points**
 
 ### Sprint 5 (Weeks 9-10): Operations & Deployment 🚀 IN PROGRESS
-- Epic 6: All stories (7 points) 📋 TODO
-- Epic 7: All stories (10 points) 📋 TODO
+- Epic 6: Story 6.3 ✅ COMPLETED (3 points), remaining stories (4 points) 📋 TODO
+- Epic 7: Story 7.1 ✅ COMPLETED (5 points), remaining stories (5 points) 📋 TODO
 - Buffer for fixes and optimization: ✅ Performance Optimization Completed (5 points)
-- **Total: 22 points** (5 points from buffer completed)
+- **Total: 22 points** (13 points completed)
 
-**Buffer Work Completed (2025-06-12):**
-- **Performance Optimization** (5 points):
+**Completed Work:**
+- **Buffer - Performance Optimization** (5 points) - 2025-06-12:
   - Investigated daily pipeline timeout issues
   - Implemented connection reuse (48% improvement)
   - Added parallel processing for independent ETLs (77% total improvement)
@@ -522,6 +536,18 @@ Sprint 5 (Operations & Deployment) - 17 points remaining:
   - Created comprehensive performance documentation
   - Simple implementation using ThreadPoolExecutor
   - No data quality degradation
+
+- **Story 7.1 - Unit Tests** (5 points) - Previously completed:
+  - Comprehensive test suite with 69 tests
+  - Tests for all ETL pipelines
+  - Mock testing for API calls and database operations
+
+- **Story 6.3 - Operational Runbook** (3 points) - 2025-06-12:
+  - Created comprehensive operational runbook
+  - Documented all common issues and solutions
+  - Added troubleshooting procedures for each ETL
+  - Included data recovery and maintenance procedures
+  - Created S&P 500 update utility script
 
 ## Definition of Done
 - [ ] Code reviewed by at least one team member
