@@ -1,0 +1,43 @@
+# Financial Data Pipeline Cron Schedule
+#
+# This cron configuration runs the daily update process
+# Adjust times based on your timezone and requirements
+#
+# Installation:
+# 1. Edit this file to match your paths and schedule
+# 2. Install with: crontab financial-data-pipeline.cron
+# 3. View current crontab: crontab -l
+# 4. Remove crontab: crontab -r
+
+# Environment variables (adjust paths as needed)
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+PROJECT_ROOT=/home/jcl/pythonCode/financial-data-service
+
+# Daily update - Run at 6:30 PM Eastern (after market close)
+# This is 10:30 PM UTC during EST, 9:30 PM UTC during EDT
+# - Uses --days-back 5 to get last 5 days of prices (covers weekends/holidays)
+# - Uses quarterly financial data by default (more frequent updates)
+# - All ETLs run to catch new earnings reports
+30 22 * * 1-5 cd $PROJECT_ROOT && source venv/bin/activate && python scripts/run_daily_pipeline.py --sp500 --days-back 5 --period quarterly >> logs/daily_pipeline_$(date +\%Y\%m\%d).log 2>&1
+
+# Weekly full refresh - Run Sunday at 2 AM
+# Catches any data corrections or late filings
+# - Uses --days-back 30 for a month of price history
+# - Ensures all financial data is up to date
+0 2 * * 0 cd $PROJECT_ROOT && source venv/bin/activate && python scripts/run_daily_pipeline.py --sp500 --days-back 30 --period quarterly >> logs/weekly_refresh_$(date +\%Y\%m\%d).log 2>&1
+
+# Monthly data quality check - First day of month at 3 AM
+# Can add a separate script for comprehensive data validation
+# 0 3 1 * * cd $PROJECT_ROOT && python scripts/monthly_data_quality_check.py >> /var/log/financial-data-pipeline.log 2>&1
+
+# Alternative schedules (commented out):
+
+# For testing - Run every hour between 9 AM and 6 PM on weekdays
+# 0 9-18 * * 1-5 cd $PROJECT_ROOT && ./scripts/daily_update.sh --symbols AAPL MSFT NVDA >> /var/log/financial-data-pipeline.log 2>&1
+
+# For smaller subset - Run top 10 stocks by market cap
+# 30 18 * * 1-5 cd $PROJECT_ROOT && ./scripts/daily_update.sh --symbols AAPL MSFT NVDA AMZN GOOGL META BRK-B LLY AVGO TSM >> /var/log/financial-data-pipeline.log 2>&1
+
+# For intraday updates (if needed) - Every 4 hours during market hours
+# 0 10,14,18 * * 1-5 cd $PROJECT_ROOT && python scripts/run_price_etl.py --symbols AAPL MSFT NVDA --days-back 1 >> /var/log/financial-data-pipeline.log 2>&1
