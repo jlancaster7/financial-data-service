@@ -74,6 +74,10 @@ def main():
         snowflake = SnowflakeConnector(config.snowflake)
         fmp_client = FMPClient(config.fmp)
         
+        # Connect to Snowflake
+        snowflake.connect()
+        logger.info("Connected to Snowflake")
+        
         # Determine symbols to process
         if args.sp500:
             symbols = get_sp500_symbols(fmp_client)
@@ -87,6 +91,8 @@ def main():
         
         # Create and configure ETL pipeline
         etl = CompanyETL(config)
+        # Share the snowflake connection
+        etl.snowflake = snowflake
         
         # Add monitoring hooks for visibility
         def log_extraction_complete(etl_instance, data=None, **kwargs):
@@ -156,6 +162,11 @@ def main():
     except Exception as e:
         logger.error(f"ETL pipeline failed: {e}")
         return False
+    finally:
+        # Clean up connections
+        if 'snowflake' in locals() and snowflake:
+            snowflake.disconnect()
+            logger.info("Disconnected from Snowflake")
 
 
 if __name__ == "__main__":

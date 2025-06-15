@@ -65,7 +65,7 @@ def setup_snowflake():
             password=config.snowflake.password,
             role="ACCOUNTADMIN",  # Use ACCOUNTADMIN for setup
             warehouse=config.snowflake.warehouse,
-            disable_ocsp_checks=True,
+            insecure_mode=True,
         )
 
         logger.info("✓ Connected to Snowflake as ACCOUNTADMIN")

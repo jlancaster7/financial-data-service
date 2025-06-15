@@ -1,6 +1,7 @@
 """
 ETL pipeline for calculating and loading TTM (Trailing Twelve Month) financial metrics
 """
+
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone
 from loguru import logger
@@ -12,41 +13,41 @@ from src.utils.config import Config
 
 class TTMCalculationETL(BaseETL):
     """ETL pipeline for calculating TTM financial metrics"""
-    
+
     def __init__(self, config: Config):
         """
         Initialize TTM Calculation ETL
-        
+
         Args:
             config: Application configuration
         """
         # Create Snowflake connector
         snowflake_connector = SnowflakeConnector(config.snowflake)
-        
+
         # Initialize base class
         super().__init__(
             job_name="ttm_calculation_etl",
             snowflake_connector=snowflake_connector,
             fmp_client=None,  # Not needed for calculations
             batch_size=config.app.batch_size,
-            enable_monitoring=config.app.enable_monitoring
+            enable_monitoring=config.app.enable_monitoring,
         )
-        
+
         # Store config for later use
         self.config = config
-        
+
     def extract(self, symbols: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         Extract quarterly financial data to calculate TTM metrics
-        
+
         Args:
             symbols: Optional list of symbols to process. If None, process all.
-            
+
         Returns:
             List of potential TTM calculation opportunities
         """
         logger.info("Extracting data for TTM calculations")
-        
+
         # Query to find all dates where we have 4 quarters of data available
         query = """
         WITH quarterly_data AS (
@@ -128,17 +129,17 @@ class TTMCalculationETL(BaseETL):
             AND t.calculation_date = existing.calculation_date
         WHERE existing.ttm_key IS NULL
         """
-        
+
         params = []
-        
+
         # Add symbol filter if provided
         if symbols:
-            placeholders = ','.join(['%s' for _ in symbols])
+            placeholders = ",".join(["%s" for _ in symbols])
             query += f" AND t.symbol IN ({placeholders})"
             params.extend(symbols)
-        
+
         query += " ORDER BY t.symbol, t.calculation_date"
-        
+
         try:
             records = self.snowflake.fetch_all(query, tuple(params) if params else None)
             logger.info(f"Found {len(records)} TTM calculation opportunities")
@@ -146,21 +147,23 @@ class TTMCalculationETL(BaseETL):
         except Exception as e:
             logger.error(f"Failed to extract TTM opportunities: {e}")
             raise
-    
-    def transform(self, raw_data: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+
+    def transform(
+        self, raw_data: List[Dict[str, Any]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Calculate TTM metrics for each opportunity
-        
+
         Args:
             raw_data: List of TTM calculation opportunities
-            
+
         Returns:
             Dict with 'ttm_records' key containing calculated TTM data
         """
         logger.info(f"Calculating TTM metrics for {len(raw_data)} opportunities")
-        
+
         ttm_records = []
-        
+
         for opportunity in raw_data:
             try:
                 # Get the 4 most recent quarters for this calculation date
@@ -210,128 +213,149 @@ class TTMCalculationETL(BaseETL):
                 FROM available_quarters
                 WHERE quarter_rank <= 4
                 """
-                
+
                 params = (
-                    opportunity['COMPANY_KEY'],
-                    opportunity['ACCEPTED_DATE'],
-                    opportunity['CALCULATION_DATE']
+                    opportunity.get("company_key", opportunity.get("COMPANY_KEY")),
+                    opportunity.get("accepted_date", opportunity.get("ACCEPTED_DATE")),
+                    opportunity.get(
+                        "calculation_date", opportunity.get("CALCULATION_DATE")
+                    ),
                 )
-                
+
                 result = self.snowflake.fetch_all(query, params)
-                
+
                 if result and len(result) > 0:
                     ttm_data = result[0]
-                    
+
                     # Create TTM record
                     ttm_record = {
-                        'company_key': opportunity['COMPANY_KEY'],
-                        'calculation_date': opportunity['CALCULATION_DATE'],
-                        'accepted_date': opportunity['ACCEPTED_DATE'],
-                        'quarters_included': ttm_data['QUARTERS_USED'],
-                        'oldest_quarter_date': ttm_data['OLDEST_QUARTER'],
-                        'newest_quarter_date': ttm_data['NEWEST_QUARTER'],
+                        "company_key": opportunity.get(
+                            "company_key", opportunity.get("COMPANY_KEY")
+                        ),
+                        "calculation_date": opportunity.get(
+                            "calculation_date", opportunity.get("CALCULATION_DATE")
+                        ),
+                        "accepted_date": opportunity.get(
+                            "accepted_date", opportunity.get("ACCEPTED_DATE")
+                        ),
+                        "quarters_included": ttm_data["QUARTERS_USED"],
+                        "oldest_quarter_date": ttm_data["OLDEST_QUARTER"],
+                        "newest_quarter_date": ttm_data["NEWEST_QUARTER"],
                         # Flow metrics
-                        'ttm_revenue': ttm_data['TTM_REVENUE'],
-                        'ttm_cost_of_revenue': ttm_data['TTM_COST_OF_REVENUE'],
-                        'ttm_gross_profit': ttm_data['TTM_GROSS_PROFIT'],
-                        'ttm_operating_expenses': ttm_data['TTM_OPERATING_EXPENSES'],
-                        'ttm_operating_income': ttm_data['TTM_OPERATING_INCOME'],
-                        'ttm_net_income': ttm_data['TTM_NET_INCOME'],
-                        'ttm_eps': ttm_data['TTM_EPS'],
-                        'ttm_eps_diluted': ttm_data['TTM_EPS_DILUTED'],
-                        'ttm_operating_cash_flow': ttm_data['TTM_OPERATING_CASH_FLOW'],
-                        'ttm_investing_cash_flow': ttm_data['TTM_INVESTING_CASH_FLOW'],
-                        'ttm_financing_cash_flow': ttm_data['TTM_FINANCING_CASH_FLOW'],
-                        'ttm_free_cash_flow': ttm_data['TTM_FREE_CASH_FLOW'],
-                        'ttm_capital_expenditures': ttm_data['TTM_CAPITAL_EXPENDITURES'],
-                        'ttm_dividends_paid': ttm_data['TTM_DIVIDENDS_PAID'],
+                        "ttm_revenue": ttm_data["TTM_REVENUE"],
+                        "ttm_cost_of_revenue": ttm_data["TTM_COST_OF_REVENUE"],
+                        "ttm_gross_profit": ttm_data["TTM_GROSS_PROFIT"],
+                        "ttm_operating_expenses": ttm_data["TTM_OPERATING_EXPENSES"],
+                        "ttm_operating_income": ttm_data["TTM_OPERATING_INCOME"],
+                        "ttm_net_income": ttm_data["TTM_NET_INCOME"],
+                        "ttm_eps": ttm_data["TTM_EPS"],
+                        "ttm_eps_diluted": ttm_data["TTM_EPS_DILUTED"],
+                        "ttm_operating_cash_flow": ttm_data["TTM_OPERATING_CASH_FLOW"],
+                        "ttm_investing_cash_flow": ttm_data["TTM_INVESTING_CASH_FLOW"],
+                        "ttm_financing_cash_flow": ttm_data["TTM_FINANCING_CASH_FLOW"],
+                        "ttm_free_cash_flow": ttm_data["TTM_FREE_CASH_FLOW"],
+                        "ttm_capital_expenditures": ttm_data[
+                            "TTM_CAPITAL_EXPENDITURES"
+                        ],
+                        "ttm_dividends_paid": ttm_data["TTM_DIVIDENDS_PAID"],
                         # Stock metrics
-                        'latest_shares_outstanding': ttm_data['LATEST_SHARES_OUTSTANDING'],
-                        'latest_total_assets': ttm_data['LATEST_TOTAL_ASSETS'],
-                        'latest_current_assets': ttm_data['LATEST_CURRENT_ASSETS'],
-                        'latest_total_liabilities': ttm_data['LATEST_TOTAL_LIABILITIES'],
-                        'latest_current_liabilities': ttm_data['LATEST_CURRENT_LIABILITIES'],
-                        'latest_total_equity': ttm_data['LATEST_TOTAL_EQUITY'],
-                        'latest_cash_and_equivalents': ttm_data['LATEST_CASH_AND_EQUIVALENTS'],
-                        'latest_total_debt': ttm_data['LATEST_TOTAL_DEBT'],
-                        'latest_net_debt': ttm_data['LATEST_NET_DEBT']
+                        "latest_shares_outstanding": ttm_data[
+                            "LATEST_SHARES_OUTSTANDING"
+                        ],
+                        "latest_total_assets": ttm_data["LATEST_TOTAL_ASSETS"],
+                        "latest_current_assets": ttm_data["LATEST_CURRENT_ASSETS"],
+                        "latest_total_liabilities": ttm_data[
+                            "LATEST_TOTAL_LIABILITIES"
+                        ],
+                        "latest_current_liabilities": ttm_data[
+                            "LATEST_CURRENT_LIABILITIES"
+                        ],
+                        "latest_total_equity": ttm_data["LATEST_TOTAL_EQUITY"],
+                        "latest_cash_and_equivalents": ttm_data[
+                            "LATEST_CASH_AND_EQUIVALENTS"
+                        ],
+                        "latest_total_debt": ttm_data["LATEST_TOTAL_DEBT"],
+                        "latest_net_debt": ttm_data["LATEST_NET_DEBT"],
                     }
-                    
+
                     ttm_records.append(ttm_record)
-                    
+
             except Exception as e:
-                logger.error(f"Failed to calculate TTM for {opportunity.get('SYMBOL')} on {opportunity.get('CALCULATION_DATE')}: {e}")
-        
+                logger.error(
+                    f"Failed to calculate TTM for {opportunity.get('symbol', opportunity.get('SYMBOL'))} on {opportunity.get('calculation_date', opportunity.get('CALCULATION_DATE'))}: {e}"
+                )
+
         logger.info(f"Successfully calculated {len(ttm_records)} TTM records")
-        return {'ttm_records': ttm_records}
-    
+        return {"ttm_records": ttm_records}
+
     def load(self, transformed_data: Dict[str, List[Dict[str, Any]]]) -> int:
         """
         Load calculated TTM metrics to FACT_FINANCIALS_TTM
-        
+
         Args:
             transformed_data: Dict with 'ttm_records' key containing TTM data
-            
+
         Returns:
             Number of records loaded
         """
-        ttm_records = transformed_data.get('ttm_records', [])
-        
+        ttm_records = transformed_data.get("ttm_records", [])
+
         if not ttm_records:
             logger.warning("No TTM data to load")
             return 0
-        
+
         logger.info(f"Loading {len(ttm_records)} TTM records to FACT_FINANCIALS_TTM")
-        
+
         try:
             # Bulk insert TTM records
-            affected = self.snowflake.bulk_insert('ANALYTICS.FACT_FINANCIALS_TTM', ttm_records)
-            logger.info(f"Successfully loaded {affected} records to FACT_FINANCIALS_TTM")
+            affected = self.snowflake.bulk_insert(
+                "ANALYTICS.FACT_FINANCIALS_TTM", ttm_records
+            )
+            logger.info(
+                f"Successfully loaded {affected} records to FACT_FINANCIALS_TTM"
+            )
             return affected
-            
+
         except Exception as e:
             logger.error(f"Failed to load TTM data: {e}")
             raise
-    
+
     def run(self, symbols: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Run the complete TTM calculation ETL pipeline
-        
+
         Args:
             symbols: Optional list of symbols to process
-            
+
         Returns:
             ETL result summary
         """
         logger.info(f"Starting {self.job_name} ETL pipeline")
-        
+
         try:
             # Extract
             opportunities = self.extract(symbols)
+
             if not opportunities:
                 logger.info("No new TTM calculations needed")
                 return {
-                    'status': 'success',
-                    'records_processed': 0,
-                    'message': 'No new TTM calculations needed'
+                    "status": "success",
+                    "records_processed": 0,
+                    "message": "No new TTM calculations needed",
                 }
-            
+
             # Transform
             transformed_data = self.transform(opportunities)
-            
+
             # Load
             records_loaded = self.load(transformed_data)
-            
+
             return {
-                'status': 'success',
-                'opportunities_found': len(opportunities),
-                'records_loaded': records_loaded
+                "status": "success",
+                "opportunities_found": len(opportunities),
+                "records_loaded": records_loaded,
             }
-            
+
         except Exception as e:
             logger.error(f"TTM calculation ETL pipeline failed: {e}")
-            return {
-                'status': 'failed',
-                'error': str(e),
-                'records_processed': 0
-            }
+            return {"status": "failed", "error": str(e), "records_processed": 0}

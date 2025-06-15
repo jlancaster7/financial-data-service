@@ -47,7 +47,7 @@ class SnowflakeConnector:
             database=self.config.database,
             schema=self.config.schema,
             role=self.config.role,
-            disable_ocsp_checks=True,
+            insecure_mode=True,
         )
         logger.info("Successfully connected to Snowflake")
 
@@ -96,14 +96,16 @@ class SnowflakeConnector:
                 cursor.execute(query)
             logger.debug("Query executed successfully")
 
-    def execute_with_rowcount(self, query: str, params: Optional[Union[tuple, dict]] = None) -> int:
+    def execute_with_rowcount(
+        self, query: str, params: Optional[Union[tuple, dict]] = None
+    ) -> int:
         """
         Execute a query and return the number of affected rows
-        
+
         Args:
             query: SQL query to execute
             params: Query parameters
-            
+
         Returns:
             Number of rows affected
         """
@@ -184,6 +186,10 @@ class SnowflakeConnector:
         columns = list(data[0].keys())
         has_variant = any(col.lower() in variant_columns for col in columns)
 
+        # Ensure columns are uppercase for Snowflake (but keep track of original for data access)
+        original_columns = columns.copy()
+        columns = [col.upper() for col in columns]
+
         # Convert data to DataFrame
         if has_variant:
             # Pre-process VARIANT columns to JSON strings
@@ -200,6 +206,9 @@ class SnowflakeConnector:
         else:
             # Direct conversion for non-VARIANT data
             df = pd.DataFrame(data)
+
+        # Ensure column names are uppercase for Snowflake
+        df.columns = [col.upper() for col in df.columns]
 
         try:
             # Parse table name and schema
@@ -220,6 +229,7 @@ class SnowflakeConnector:
                 schema=schema_name,
                 auto_create_table=False,
                 overwrite=False,
+                use_logical_type=True,
             )
 
             if success:
@@ -234,7 +244,9 @@ class SnowflakeConnector:
             logger.error(f"Bulk insert with write_pandas failed: {e}")
             # Fall back to executemany method
             logger.warning("Falling back to executemany method")
-            return self._bulk_insert_fallback(table, data, columns, has_variant)
+            return self._bulk_insert_fallback(
+                table, data, original_columns, has_variant
+            )
 
     def _bulk_insert_fallback(
         self,
@@ -245,6 +257,9 @@ class SnowflakeConnector:
     ) -> int:
         """Fallback method for bulk insert if write_pandas fails"""
         variant_columns = {"raw_data", "metadata", "error_details"}
+
+        # Ensure uppercase columns for SQL query
+        upper_columns = [col.upper() for col in columns]
 
         with self.cursor() as cursor:
             if has_variant:
@@ -264,7 +279,7 @@ class SnowflakeConnector:
                                 placeholders.append("%s")
                             row_values.append(value)
 
-                        query = f"INSERT INTO {table} ({','.join(columns)}) SELECT {','.join(placeholders)}"
+                        query = f"INSERT INTO {table} ({','.join(upper_columns)}) SELECT {','.join(placeholders)}"
                         cursor.execute(query, tuple(row_values))
                         inserted += 1
 
@@ -285,7 +300,7 @@ class SnowflakeConnector:
                     row_values = [record[col] for col in columns]
                     values.append(tuple(row_values))
 
-                query = f"INSERT INTO {table} ({','.join(columns)}) VALUES ({','.join(['%s'] * len(columns))})"
+                query = f"INSERT INTO {table} ({','.join(upper_columns)}) VALUES ({','.join(['%s'] * len(columns))})"
                 cursor.executemany(query, values)
                 inserted = cursor.rowcount
                 logger.info(

@@ -414,20 +414,23 @@ class PipelineOrchestrator:
             pipelines.append(('market_metrics', self.run_market_metrics_etl))
         
         # Group pipelines by dependencies
-        # Group 1: Independent ETLs (can run in parallel)
-        independent_etls = []
+        # Group 1: Company ETL must run first (dimension table)
+        company_etl = None
         if 'company' in [name for name, _ in pipelines]:
-            independent_etls.append(('company', self.run_company_etl))
-        if 'price' in [name for name, _ in pipelines]:
-            independent_etls.append(('price', self.run_price_etl))
-        if 'financial' in [name for name, _ in pipelines]:
-            independent_etls.append(('financial', self.run_financial_etl))
+            company_etl = ('company', self.run_company_etl)
         
-        # Group 2: Dependent ETLs (must run after Group 1)
-        dependent_etls = []
+        # Group 2: ETLs that depend on DIM_COMPANY (can run in parallel after company)
+        company_dependent_etls = []
+        if 'price' in [name for name, _ in pipelines]:
+            company_dependent_etls.append(('price', self.run_price_etl))
+        if 'financial' in [name for name, _ in pipelines]:
+            company_dependent_etls.append(('financial', self.run_financial_etl))
+        
+        # Group 3: ETLs that depend on price/financial data (must run after Group 2)
+        final_etls = []
         for name, func in pipelines:
             if name not in ['company', 'price', 'financial']:
-                dependent_etls.append((name, func))
+                final_etls.append((name, func))
         
         pipeline_timings = {}
         
@@ -435,20 +438,40 @@ class PipelineOrchestrator:
         if self.snowflake:
             self.snowflake.connect()
         
-        # Execute Group 1 in parallel
-        if independent_etls:
+        # Execute Phase 1: Company ETL (must run first)
+        if company_etl:
             logger.info(f"\n{'='*60}")
-            logger.info("PHASE 1: Running independent ETLs in parallel")
-            logger.info(f"Parallel ETLs: {[name for name, _ in independent_etls]}")
+            logger.info("PHASE 1: Running Company ETL (required for dimension table)")
             logger.info(f"{'='*60}")
             
-            group1_start = time.time()
+            name, func = company_etl
+            phase1_start = time.time()
+            success = func(symbols, args)
+            phase1_duration = time.time() - phase1_start
+            pipeline_timings[name] = phase1_duration
             
-            with ThreadPoolExecutor(max_workers=len(independent_etls)) as executor:
+            if success:
+                any_success = True
+            else:
+                all_success = False
+                logger.error("Company ETL failed - subsequent ETLs may fail")
+            
+            logger.info(f"Phase 1 completed in {phase1_duration:.1f}s")
+        
+        # Execute Phase 2: ETLs that depend on DIM_COMPANY (in parallel)
+        if company_dependent_etls:
+            logger.info(f"\n{'='*60}")
+            logger.info("PHASE 2: Running company-dependent ETLs in parallel")
+            logger.info(f"Parallel ETLs: {[name for name, _ in company_dependent_etls]}")
+            logger.info(f"{'='*60}")
+            
+            phase2_start = time.time()
+            
+            with ThreadPoolExecutor(max_workers=len(company_dependent_etls)) as executor:
                 futures = {}
                 
-                # Submit all independent ETLs
-                for name, func in independent_etls:
+                # Submit all company-dependent ETLs
+                for name, func in company_dependent_etls:
                     logger.info(f"Starting {name} ETL (parallel)")
                     future = executor.submit(func, symbols, args)
                     futures[future] = (name, time.time())
@@ -469,17 +492,17 @@ class PipelineOrchestrator:
                         all_success = False
                         pipeline_timings[name] = time.time() - start_time
             
-            group1_duration = time.time() - group1_start
-            logger.info(f"Phase 1 completed in {group1_duration:.1f}s")
+            phase2_duration = time.time() - phase2_start
+            logger.info(f"Phase 2 completed in {phase2_duration:.1f}s")
         
-        # Execute Group 2 sequentially (dependent ETLs)
-        if dependent_etls:
+        # Execute Phase 3: Final ETLs that depend on price/financial data
+        if final_etls:
             logger.info(f"\n{'='*60}")
-            logger.info("PHASE 2: Running dependent ETLs sequentially")
-            logger.info(f"Sequential ETLs: {[name for name, _ in dependent_etls]}")
+            logger.info("PHASE 3: Running final ETLs sequentially")
+            logger.info(f"Sequential ETLs: {[name for name, _ in final_etls]}")
             logger.info(f"{'='*60}")
             
-            for name, pipeline_func in dependent_etls:
+            for name, pipeline_func in final_etls:
                 logger.info(f"\n{'-'*60}")
                 pipeline_start = time.time()
                 success = pipeline_func(symbols, args)
